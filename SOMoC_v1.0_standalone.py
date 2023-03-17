@@ -16,6 +16,7 @@ import pandas as pd
 from array import array
 import time
 import os
+from typing import List, Tuple
 from datetime import date
 from pathlib import Path
 import numpy as np
@@ -48,18 +49,18 @@ test_file = "test/focal_adhesion.csv"
 K = None            # Optimal number of clusters K
 
 # Perform molecule standardization using the MolVS package
-smiles_standardization = True       
+smiles_standardization = False       
 
 ### UMAP parameters ###
-n_neighbors = 40    # The size of local neighborhood used for manifold approximation. Larger values result in more global views of the manifold, while smaller values result in more local data being preserved.
+n_neighbors = 10    # The size of local neighborhood used for manifold approximation. Larger values result in more global views of the manifold, while smaller values result in more local data being preserved.
 min_dist = 0.0      # The effective minimum distance between embedded points. Smaller values will result in a more clustered/clumped embedding where nearby points on the manifold are drawn closer together, while larger values will result on a more even dispersal of points.
 random_state = 10   # Use a fixed seed for reproducibility.
 metric = "jaccard"  # The metric to use to compute distances in high dimensional space.
 
 ### GMM parameters ###
-max_K = 25                      # Max number of clusters to cosidering during the GMM loop
+max_K = 3                      # Max number of clusters to cosidering during the GMM loop
 Kers = np.arange(2, max_K+1, 1) # Generate the range of K values to explore
-iterations = 10                 # Iterations of GMM to run for each K
+iterations = 2                 # Iterations of GMM to run for each K
 n_init = 5                      # Number of initializations on each GMM run, then just keep the best one.
 init_params = 'kmeans'          # How to initialize. Can be random or K-means
 covariance_type = 'tied'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
@@ -108,7 +109,7 @@ def Standardize_molecules(data):
     s = Standardizer()
 
     list_of_smiles = data_.iloc[:,0]
-    # list_of_smiles = data['SMILES']
+    # list_of_smiles = data_['SMILES']
 
     for i, molecule in enumerate(list_of_smiles, start = 1):
         try:
@@ -132,7 +133,7 @@ def Fingerprints_calculator(data):
     time_start = time.time()
     data_ = data.copy()
     if 'mol' not in data_:  # Check if already converted
-        data_['mol'] = data_['SMILES'].apply(lambda x: Chem.MolFromSmiles(x))
+        data_['mol'] = data_.iloc[:,0].apply(lambda x: Chem.MolFromSmiles(x))
     try:
         _EState = [FingerprintMol(x)[0]
                    for x in data_['mol']]  # [0]EState1 [1]EState2
@@ -171,28 +172,43 @@ def UMAP_reduction(X):
     print('='*50)
     return embedding, n_components
 
+def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int = 2, n_init: int = 2, init_params: str = 'kmeans', covariance_type: str = 'full', warm_start: bool = False) -> Tuple[pd.DataFrame, int]:
+    """
+    Runs GMM clustering for a range of K values and returns the K value which maximizes the silhouette score.
 
-def GMM_clustering_loop(embeddings):
-    """Run GMM clustering for a range of K values, to get the K which maximizes the SIL score"""
+    Parameters:
+    embeddings (np.ndarray): An array of embeddings to cluster.
+    max_K (int): The maximum number of K values to try. Default is 10.
+    iterations (int): The number of iterations to run for each K value. Default is 10.
+    n_init (int): The number of initializations to perform for each K value. Default is 10.
+    init_params (str): The method to initialize the model parameters. Default is 'kmeans'.
+    covariance_type (str): The type of covariance to use. Default is 'full'.
+    warm_start (bool): Whether to reuse the previous solution as the initialization for the next K value. Default is False.
+
+    Returns:
+    Tuple[pd.DataFrame, int]: A tuple of the results dataframe and the K value which maximizes the silhouette score.
+    """
     print("Clustering")
     print(f'Running GMM clustering for {max_K} iterations..')
+    
     time_start = time.time()
-    temp = []
-    for n in Kers:
-        temp_sil = []
+
+    temp = {i: [] for i in range(max_K)}  # pre-allocate the dictionary
+
+    for n in range(2, max_K):
+        temp_sil = [None] * iterations # pre-allocate the list
         for x in range(iterations):
             gmm = GMM(n, n_init=n_init, init_params=init_params, covariance_type=covariance_type,
                       warm_start=warm_start, random_state=x, verbose=0).fit(embeddings)
             labels = gmm.predict(embeddings)
-            sil = round(silhouette_score(
-                embeddings, labels, metric='cosine'), 4)
-            temp_sil.append(sil)
-        temp.append([n, np.mean(temp_sil), np.std(temp_sil)])
+            temp_sil[x] = silhouette_score(
+                embeddings, labels, metric='cosine')
+        temp[n] = [n,np.mean(temp_sil), np.std(temp_sil)]
 
-    results = pd.DataFrame(
-        temp, columns=['Clusters', 'Silhouette', 'sil_stdv'])
+    results = pd.DataFrame.from_dict(
+        temp, orient='index', columns=['Clusters','Silhouette', 'sil_stdv'])
     results_sorted = results.sort_values(['Silhouette'], ascending=False)
-    K_loop = results_sorted.iloc[0]['Clusters']  # Get max Sil K
+    K_loop = results_sorted.index[0]  # Get max Sil K
     print(f'GMM clustering loop took {round(time.time()-time_start)} seconds')
     print(' '*100)
     return results, int(K_loop)
