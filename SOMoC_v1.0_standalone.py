@@ -67,7 +67,6 @@ init_params = 'kmeans'          # How to initialize. Can be random or K-means
 covariance_type = 'tied'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
 warm_start = False
 
-
 #################################### Helper functions #####################################
 ###########################################################################################
 
@@ -110,7 +109,6 @@ def Standardize_molecules(data):
     s = Standardizer()
 
     list_of_smiles = data_.iloc[:,0]
-    # list_of_smiles = data_['SMILES']
 
     for i, molecule in enumerate(list_of_smiles, start = 1):
         try:
@@ -303,17 +301,16 @@ def GMM_clustering_final(embeddings, K):
     else:
         print('GMM did not converge. Please check you input configuration.')
 
-    sil_ok = round(float(silhouette_score(
-        embeddings, labels_final, metric='cosine')), 4)
-    db_score = round(davies_bouldin_score(embeddings, labels_final), 4)
-    ch_score = round(calinski_harabasz_score(embeddings, labels_final), 4)
-    dist_dunn = pairwise_distances(embeddings)
-    dunn_score = round(float(dunn(dist_dunn, labels_final)), 4)
+    sil_ok = silhouette_score(embeddings, labels_final, metric='cosine').round(4)
+    db_score = davies_bouldin_score(embeddings, labels_final).round(4)
+    ch_score = calinski_harabasz_score(embeddings, labels_final).round(4)
+    dist_dunn = pairwise_distances(embeddings).round(4)
+    dunn_score = dunn(dist_dunn, labels_final).round(4)
 
     valid_metrics = [sil_ok, db_score, ch_score, dunn_score]
 
     sil_random, sil_random_st, db_random, db_random_st, ch_random, ch_random_st, dunn_random, dunn_random_st = Cluster_random(
-        embeddings)
+        embeddings, num_iterations=500, num_clusters=K)
 
     random_means = [sil_random, db_random, ch_random, dunn_random]
     random_sds = [sil_random_st, db_random_st, ch_random_st, dunn_random_st]
@@ -405,40 +402,55 @@ def Distribution_plot(data_clustered):
 
     return
 
+def Cluster_random(embeddings: np.array, num_iterations: int = 500, num_clusters: int = 3):
+    """
+    Perform random clustering and calculate several CVIs.
 
-def Cluster_random(embeddings: array):
-    """Perform random clustering and calculate several CVIs"""
-    SILs = []
-    DBs = []
-    CHs = []
-    DUNNs = []
+    Args:
+        embeddings (numpy.ndarray): An array of shape (n_samples, n_features) containing the data to be clustered.
+        num_iterations (int): Number of random clusterings to perform. Default is 500.
+        num_clusters (int): Number of clusters to generate randomly. Default is 3.
 
-    for i in range(500):
-        random.seed(a=i, version=2)
-        random_clusters = []
-        for x in list(range(len(embeddings))):
-            random_clusters.append(random.randint(0, K-1))
-        silhouette_random = silhouette_score(embeddings, np.ravel(random_clusters))
-        SILs.append(silhouette_random)
-        db_random = davies_bouldin_score(embeddings, np.ravel(random_clusters))
-        DBs.append(db_random)
-        ch_random = calinski_harabasz_score(embeddings, np.ravel(random_clusters))
-        CHs.append(ch_random)
+    Returns:
+        A tuple containing the following CVI scores (rounded to 4 decimal places):
+        - sil_random: Average Silhouette Coefficient over all random clusterings.
+        - sil_random_st: Standard deviation of Silhouette Coefficient over all random clusterings.
+        - db_random: Average Davies-Bouldin Index over all random clusterings.
+        - db_random_st: Standard deviation of Davies-Bouldin Index over all random clusterings.
+        - ch_random: Average Calinski-Harabasz Index over all random clusterings.
+        - ch_random_st: Standard deviation of Calinski-Harabasz Index over all random clusterings.
+        - dunn_random: Average Dunn Index over all random clusterings.
+        - dunn_random_st: Standard deviation of Dunn Index over all random clusterings.
+    """
+
+    SILs = np.zeros(num_iterations)
+    DBs = np.zeros(num_iterations)
+    CHs = np.zeros(num_iterations)
+    DUNNs = np.zeros(num_iterations)
+
+    for i in range(num_iterations):
+        np.random.seed(i)
+        random_clusters = np.random.randint(num_clusters, size=len(embeddings))
+        silhouette_random = silhouette_score(embeddings, random_clusters)
+        SILs[i] = silhouette_random
+        db_random = davies_bouldin_score(embeddings, random_clusters)
+        DBs[i] = db_random
+        ch_random = calinski_harabasz_score(embeddings, random_clusters)
+        CHs[i] = ch_random
         dist_dunn = pairwise_distances(embeddings)
-        dunn_random = dunn(dist_dunn, np.ravel(random_clusters))
-        DUNNs.append(dunn_random)
+        dunn_random = dunn(dist_dunn, random_clusters)
+        DUNNs[i] = dunn_random
 
-    sil_random = round(float(np.mean(SILs)), 4)
-    sil_random_st = round(np.std(SILs), 4)
-    db_random = round(np.mean(DBs), 4)
-    db_random_st = round(np.std(DBs), 4)
-    ch_random = round(np.mean(CHs), 4)
-    ch_random_st = round(np.std(CHs), 4)
-    dunn_random = round(float(np.mean(DUNNs)), 4)
-    dunn_random_st = round(np.std(DUNNs), 4)
+    sil_random = np.mean(SILs).round(4)
+    sil_random_st = np.std(SILs).round(4)
+    db_random = np.mean(DBs).round(4)
+    db_random_st = np.std(DBs).round(4)
+    ch_random = np.mean(CHs).round(4)
+    ch_random_st = np.std(CHs).round(4)
+    dunn_random = np.mean(DUNNs).round(4)
+    dunn_random_st = np.std(DUNNs).round(4)
 
     return sil_random, sil_random_st, db_random, db_random_st, ch_random, ch_random_st, dunn_random, dunn_random_st
-
 
 def Setting_info():
     """Create a dataframe with current run setting"""
