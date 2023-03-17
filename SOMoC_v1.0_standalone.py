@@ -150,27 +150,53 @@ def Fingerprints_calculator(data):
     return EState  # X data, fingerprints values as a np array
 
 
-def UMAP_reduction(X):
-    """Reduce feature space using the UMAP algorithm"""
-    print("Reducing")
-    print('Reducing feature space with UMAP...')
+def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
+                   metric: str = 'euclidean', random_state: int = 42,
+                   verbose: bool = True) -> Tuple[np.ndarray, int]:
 
-    time_start = time.time()
+    """
+    Reduce feature space using the UMAP algorithm.
 
+    Parameters:
+        X (np.ndarray): Input data as a NumPy array.
+        n_neighbors (int): Number of neighbors to use for the UMAP algorithm.
+        min_dist (float): Minimum distance threshold for the UMAP algorithm.
+        metric (str): Distance metric to use for the UMAP algorithm.
+        random_state (int): Random seed for the UMAP algorithm.
+        verbose (bool): Whether to print progress messages.
+
+    Returns:
+        Tuple[np.ndarray, int]: A tuple containing the reduced feature space (as a NumPy array) and the number of components
+        used for the reduction.
+
+    Raises:
+        ValueError: If the input is not a NumPy array or the number of neighbors is greater than the length of the input data.
+    """
+        
+    if not isinstance(X, np.ndarray):
+        raise ValueError("Input must be a NumPy array")
+    
     if n_neighbors >= len(X):
-        print('The number of neighbors must be smaller than the number of molecules to cluster')
+        raise ValueError("The number of neighbors must be smaller than the number of molecules to cluster")
+
+    if verbose:
+        print('Reducing feature space with UMAP...')
+
+    start_time = time.monotonic()
 
     # Set a lower bound to the number of components
-    n_components = max(int(len(X)*0.01), 3)
+    n_components = max(int(len(X) * 0.01), 3)
 
-    UMAP_reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=n_components, metric=metric,
-                             random_state=random_state).fit(X)
-    embedding = UMAP_reducer.transform(X)
+    reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=n_components, metric=metric,
+                        random_state=random_state).fit(X)
+    embedding = reducer.transform(X)
 
-    print(f'{embedding.shape[1]} features have been retained.')
-    print(f'UMAP took {round(time.time()-time_start)} seconds')
-    print('='*50)
+    if verbose:
+        print(f'{embedding.shape[1]} features have been retained.')
+        print(f'UMAP took {time.monotonic() - start_time:.3f} seconds')
+
     return embedding, n_components
+
 
 def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int = 2, n_init: int = 2, init_params: str = 'kmeans', covariance_type: str = 'full', warm_start: bool = False) -> Tuple[pd.DataFrame, int]:
     """
