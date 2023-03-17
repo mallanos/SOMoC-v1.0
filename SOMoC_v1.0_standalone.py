@@ -20,7 +20,6 @@ from typing import List, Tuple, Union
 from datetime import date
 from pathlib import Path
 import numpy as np
-import random
 
 import plotly.express as plx
 import plotly.graph_objects as go
@@ -57,12 +56,12 @@ random_state = 10   # Use a fixed seed for reproducibility.
 metric = "jaccard"  # The metric to use to compute distances in high dimensional space.
 
 ### GMM parameters ###
-max_K = 3                      # Max number of clusters to cosidering during the GMM loop
+max_K = 10                      # Max number of clusters to cosidering during the GMM loop
 Kers = np.arange(2, max_K+1, 1) # Generate the range of K values to explore
-iterations = 2                 # Iterations of GMM to run for each K
+iterations = 3                  # Iterations of GMM to run for each K
 n_init = 5                      # Number of initializations on each GMM run, then just keep the best one.
 init_params = 'kmeans'          # How to initialize. Can be random or K-means
-covariance_type = 'tied'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
+covariance_type = 'diag'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
 warm_start = False
 
 #################################### Helper functions #####################################
@@ -79,19 +78,6 @@ def Make_dir(dirName: str):
         os.makedirs(dirName)
     except FileExistsError:
         pass
-
-
-# def Get_input_data():
-#     """Get data from user input or use test dataset"""
-
-#     if input_file is not None:
-#         name = Get_name(input_file)
-#         data = pd.read_csv(input_file, delimiter=',', header=None)
-#     else:
-#         name = Get_name(test_file)
-#         data = pd.read_csv(test_file, delimiter=',', header=None)
-
-#     return data, name
 
 def Get_input_data(input_file=None, test_file="test/focal_adhesion.csv"):
     """Get data from user input or use test dataset"""
@@ -269,13 +255,27 @@ def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int
 
     return results, int(K_loop)
 
+def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_params: str ='kmeans', warm_start: bool=False, covariance_type:str='full', random_state=None):
+    
+    """
+    Cluster the dataset using the optimal K value, and calculate several CVIs
+    Parameters:
+    embeddings (array-like): The input data to cluster.
+    K (int): The number of clusters to form.
+    n_init (int): The number of initializations to perform.
+    init_params (str): The method used to initialize the weights, means, and covariances.
+    warm_start (bool): Whether to reuse the last solution to initialize the next fit.
+    covariance_type (str): The type of covariance parameters to use.
+    random_state (int): The random seed to use.
 
-def GMM_clustering_final(embeddings, K):
-    """Cluster the dataset using the optimal K value, and calculate several CVIs"""
+    Returns:
+        data_clustered (pandas.DataFrame): The input data with an additional 'cluster' column.
+    """
     print('='*50)
     print("Final clustering")
     print(f'Running GMM with K = {K}')
-    time_start = time.time()
+
+    start_time = time.monotonic()
 
     GMM_final = GMM(K, n_init=n_init, init_params=init_params, warm_start=warm_start,
                     covariance_type=covariance_type, random_state=random_state, verbose=0)
@@ -295,17 +295,14 @@ def GMM_clustering_final(embeddings, K):
 
     valid_metrics = [sil_ok, db_score, ch_score, dunn_score]
 
-    sil_random, sil_random_st, db_random, db_random_st, ch_random, ch_random_st, dunn_random, dunn_random_st = Cluster_random(
-        embeddings, num_iterations=500, num_clusters=K)
-
-    random_means = [sil_random, db_random, ch_random, dunn_random]
-    random_sds = [sil_random_st, db_random_st, ch_random_st, dunn_random_st]
+    random_means,random_sds = Cluster_random(embeddings, num_iterations=500, num_clusters=K)
 
     table_metrics = pd.DataFrame([valid_metrics, random_means, random_sds]).T
     table_metrics = table_metrics.rename(index={0: 'Silhouette score', 1: "Davies Bouldin score",
                                          2: 'Calinski Harabasz score', 3: 'Dunn Index'}, columns={0: "Value", 1: "Mean Random", 2: "SD Random"})
 
-    print(f'GMM clustering took {round(time.time()-time_start)} seconds')
+    print(f'GMM clustering took {time.monotonic() - start_time:.3f} seconds')
+
     print('='*50)
     print("Validation metrics")
     print(table_metrics)
@@ -318,14 +315,61 @@ def GMM_clustering_final(embeddings, K):
             data_clustered['SMILES_standardized'] = data_clustered['mol'].apply(
                 lambda x: Chem.MolToSmiles(x))
             data_clustered.drop(['mol'], axis=1, inplace=True)
-        except:
-            print('Something went wrong converting standardized molecules back to SMILES code..')
+        except Exception as e:
+            print('Something went wrong converting standardized molecules back to SMILES code..: {e}')
+            pass
 
     data_clustered.to_csv(f'results_SOMoC_{name}/{name}_Clustered_SOMoC.csv', index=True, header=True)
     table_metrics.to_csv(f'results_SOMoC_{name}/{name}_Validation_SOMoC.csv', index=True, header=True)
 
     return data_clustered
 
+def Cluster_random(embeddings: np.array, num_iterations: int = 500, num_clusters: int = 3):
+    """
+    Perform random clustering and calculate several CVIs.
+
+    Args:
+        embeddings (numpy.ndarray): An array of shape (n_samples, n_features) containing the data to be clustered.
+        num_iterations (int): Number of random clusterings to perform. Default is 500.
+        num_clusters (int): Number of clusters to generate randomly. Default is 3.
+
+    Returns:
+        Two lists containing CVIs means and stds (rounded to 4 decimal places):
+        - random_means: Average of all CVIs.
+        - random_sds: Standard deviation of all CVIs.
+    """
+
+    SILs = np.zeros(num_iterations)
+    DBs = np.zeros(num_iterations)
+    CHs = np.zeros(num_iterations)
+    DUNNs = np.zeros(num_iterations)
+
+    for i in range(num_iterations):
+        np.random.seed(i)
+        random_clusters = np.random.randint(num_clusters, size=len(embeddings))
+        silhouette_random = silhouette_score(embeddings, random_clusters)
+        SILs[i] = silhouette_random
+        db_random = davies_bouldin_score(embeddings, random_clusters)
+        DBs[i] = db_random
+        ch_random = calinski_harabasz_score(embeddings, random_clusters)
+        CHs[i] = ch_random
+        dist_dunn = pairwise_distances(embeddings)
+        dunn_random = dunn(dist_dunn, random_clusters)
+        DUNNs[i] = dunn_random
+
+    sil_random = np.mean(SILs).round(4)
+    sil_random_st = np.std(SILs).round(4)
+    db_random = np.mean(DBs).round(4)
+    db_random_st = np.std(DBs).round(4)
+    ch_random = np.mean(CHs).round(4)
+    ch_random_st = np.std(CHs).round(4)
+    dunn_random = np.mean(DUNNs).round(4)
+    dunn_random_st = np.std(DUNNs).round(4)
+
+    random_means = [sil_random, db_random, ch_random, dunn_random]
+    random_sds = [sil_random_st, db_random_st, ch_random_st, dunn_random_st]
+
+    return random_means,random_sds
 
 def Elbow_plot(results):
     """Draw the elbow plot of SIL score vs. K"""
@@ -388,56 +432,6 @@ def Distribution_plot(data_clustered):
 
     return
 
-def Cluster_random(embeddings: np.array, num_iterations: int = 500, num_clusters: int = 3):
-    """
-    Perform random clustering and calculate several CVIs.
-
-    Args:
-        embeddings (numpy.ndarray): An array of shape (n_samples, n_features) containing the data to be clustered.
-        num_iterations (int): Number of random clusterings to perform. Default is 500.
-        num_clusters (int): Number of clusters to generate randomly. Default is 3.
-
-    Returns:
-        A tuple containing the following CVI scores (rounded to 4 decimal places):
-        - sil_random: Average Silhouette Coefficient over all random clusterings.
-        - sil_random_st: Standard deviation of Silhouette Coefficient over all random clusterings.
-        - db_random: Average Davies-Bouldin Index over all random clusterings.
-        - db_random_st: Standard deviation of Davies-Bouldin Index over all random clusterings.
-        - ch_random: Average Calinski-Harabasz Index over all random clusterings.
-        - ch_random_st: Standard deviation of Calinski-Harabasz Index over all random clusterings.
-        - dunn_random: Average Dunn Index over all random clusterings.
-        - dunn_random_st: Standard deviation of Dunn Index over all random clusterings.
-    """
-
-    SILs = np.zeros(num_iterations)
-    DBs = np.zeros(num_iterations)
-    CHs = np.zeros(num_iterations)
-    DUNNs = np.zeros(num_iterations)
-
-    for i in range(num_iterations):
-        np.random.seed(i)
-        random_clusters = np.random.randint(num_clusters, size=len(embeddings))
-        silhouette_random = silhouette_score(embeddings, random_clusters)
-        SILs[i] = silhouette_random
-        db_random = davies_bouldin_score(embeddings, random_clusters)
-        DBs[i] = db_random
-        ch_random = calinski_harabasz_score(embeddings, random_clusters)
-        CHs[i] = ch_random
-        dist_dunn = pairwise_distances(embeddings)
-        dunn_random = dunn(dist_dunn, random_clusters)
-        DUNNs[i] = dunn_random
-
-    sil_random = np.mean(SILs).round(4)
-    sil_random_st = np.std(SILs).round(4)
-    db_random = np.mean(DBs).round(4)
-    db_random_st = np.std(DBs).round(4)
-    ch_random = np.mean(CHs).round(4)
-    ch_random_st = np.std(CHs).round(4)
-    dunn_random = np.mean(DUNNs).round(4)
-    dunn_random_st = np.std(DUNNs).round(4)
-
-    return sil_random, sil_random_st, db_random, db_random_st, ch_random, ch_random_st, dunn_random, dunn_random_st
-
 def Setting_info():
     """Create a dataframe with current run setting"""
     today = date.today()
@@ -480,7 +474,7 @@ if __name__ == '__main__':
     print('-'*50)
 
     # Get input data
-    data_raw, name = Get_input_data()
+    data_raw, name = Get_input_data(input_file=input_file)
 
     # Create output dir
     Make_dir(f'results_SOMoC_{name}')
@@ -496,15 +490,14 @@ if __name__ == '__main__':
     X = Fingerprints_calculator(data)
 
     # Reduce feature space with UMAP
-    embedding, n_components = UMAP_reduction(X)
-
+    embedding, n_components = UMAP_reduction(X, n_neighbors=n_neighbors, min_dist=min_dist, metric=metric, random_state=random_state, verbose=True)
     # If K is not set, run the GMM clustering loop to get K
     if K is None:
-        results, K = GMM_clustering_loop(embedding)
+        results, K = GMM_clustering_loop(embedding, max_K=max_K, iterations=iterations, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
         Elbow_plot(results)
 
     # Run the final clustering and calculate all CVIs
-    data_clustered = GMM_clustering_final(embedding, K)
+    data_clustered = GMM_clustering_final(embedding, K=K, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
 
     # Generate distribution plot and .CSV file
     Distribution_plot(data_clustered)
