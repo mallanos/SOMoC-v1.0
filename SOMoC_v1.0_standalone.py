@@ -16,11 +16,12 @@ import pandas as pd
 from array import array
 import time
 import os
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from datetime import date
 from pathlib import Path
 import numpy as np
 import random
+
 import plotly.express as plx
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -125,29 +126,72 @@ def Standardize_molecules(data):
 
     return data_
 
+def Fingerprints_calculator(data: pd.DataFrame) -> np.ndarray:
+    """
+    Calculate EState molecular fingerprints using the RDKit package.
 
-def Fingerprints_calculator(data):
-    """Calculate EState molecular fingerprints using the RDKit package"""
-    print('='*50)
+    Parameters:
+        data (pd.DataFrame): A pandas DataFrame containing a FIRST column of SMILES strings.
+
+    Returns:
+        np.ndarray: The calculated EState molecular fingerprints as a NumPy array.
+
+    Raises:
+        ValueError: If the input DataFrame does not contain a column of SMILES strings.
+        RuntimeError: If there is a problem with fingerprint calculation of some SMILES.
+    """
+    if 'smiles' in data.columns:
+        smiles_list = data['smiles']
+    else:
+        smiles_list = data.iloc[:,0]
+    
+    print('=' * 50)
+    # print("Calculating EState molecular fingerprints...")
     print("Encoding")
-    time_start = time.time()
-    data_ = data.copy()
-    if 'mol' not in data_:  # Check if already converted
-        data_['mol'] = data_.iloc[:,0].apply(lambda x: Chem.MolFromSmiles(x))
-    try:
-        _EState = [FingerprintMol(x)[0]
-                   for x in data_['mol']]  # [0]EState1 [1]EState2
-        EState = np.stack(_EState, axis=0)
-    except:
-        print("Oh no! There was a problem with Fingerprint calculation of some smiles")
-        print("Try using our standarization tool before clustering")
-        print("LIDeB Standarization tool: https://share.streamlit.io/capigol/lbb-game/main/juego_lbb.py")
 
-    print("Calculating EState molecular fingerprints...")
-    print(
-        f'Fingerprints calculation took {round(time.time()-time_start)} seconds')
-    print('='*50)
-    return EState  # X data, fingerprints values as a np array
+    time_start = time.monotonic()
+
+    mols = [Chem.MolFromSmiles(smiles) for smiles in smiles_list]
+    fps = [None] * len(mols)
+    i=0
+    for mol in mols:
+        try:
+            fp = FingerprintMol(mol)[0]  # EState fingerprint
+            fps[i] = fp
+            i += 1
+        except:
+            raise RuntimeError("Error in fingerprint calculation for molecule with SMILES: " + Chem.MolToSmiles(mol))
+
+    fingerprints = np.stack(fps, axis=0)
+
+    print(f'Fingerprints calculation took {time.monotonic() - time_start:.3f} seconds')
+    print('=' * 50)
+
+    return fingerprints
+
+
+# def Fingerprints_calculator(data):
+#     """Calculate EState molecular fingerprints using the RDKit package"""
+#     print('='*50)
+#     print("Encoding")
+#     time_start = time.time()
+#     data_ = data.copy()
+#     if 'mol' not in data_:  # Check if already converted
+#         data_['mol'] = data_.iloc[:,0].apply(lambda x: Chem.MolFromSmiles(x))
+#     try:
+#         _EState = [FingerprintMol(x)[0]
+#                    for x in data_['mol']]  # [0]EState1 [1]EState2
+#         EState = np.stack(_EState, axis=0)
+#     except:
+#         print("Oh no! There was a problem with Fingerprint calculation of some smiles")
+#         print("Try using our standarization tool before clustering")
+#         print("LIDeB Standarization tool: https://share.streamlit.io/capigol/lbb-game/main/juego_lbb.py")
+
+#     print("Calculating EState molecular fingerprints...")
+#     print(
+#         f'Fingerprints calculation took {round(time.time()-time_start)} seconds')
+#     print('='*50)
+#     return EState  # X data, fingerprints values as a np array
 
 
 def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
@@ -238,7 +282,7 @@ def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int
     
     print(f'GMM clustering loop took {time.monotonic() - start_time:.3f} seconds')
     print(' '*100)
-    
+
     return results, int(K_loop)
 
 
