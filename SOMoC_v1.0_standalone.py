@@ -92,7 +92,7 @@ def Get_input_data(input_file=None, test_file="test/focal_adhesion.csv"):
     
     return data, name
 
-def Standardize_molecules(data: pd.DataFrame):
+def Standardize_molecules(data: pd.DataFrame) -> pd.DataFrame:
     """Standardize molecules using the MolVS package https://molvs.readthedocs.io/en/latest/.
 
     Parameters
@@ -168,10 +168,8 @@ def Fingerprints_calculator(data: pd.DataFrame) -> np.ndarray:
             fp = FingerprintMol(mol)[0]  # EState fingerprint
             fps[i] = fp
             i += 1
-        # except:
         except Exception as e:
-            print(f"Failed to process molecule {i+1}: ({e})")
-            # raise RuntimeError("Error in fingerprint calculation for molecule with SMILES: " + Chem.MolToSmiles(mol))
+            print(f"Failed fingerprint calculation for molecule {i+1}: ({e})")
 
     fingerprints = np.stack(fps, axis=0)
 
@@ -226,6 +224,67 @@ def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
         print(f'UMAP took {time.monotonic() - start_time:.3f} seconds')
 
     return embedding, n_components
+
+def Calculate_CVIs(embeddings: np.ndarray, labels: List, Random: bool = True, num_iterations: int = 500, num_clusters: int = 3):
+
+    """
+    Calculate all CVIs for real or random clustering
+
+    Parameters:
+    embeddings (np.ndarray): An array of embeddings to cluster.
+    labels (List): List of cluster labels.
+    
+    Returns: A nested dictionary containing the all CVIs
+    """
+
+    results = {}
+
+    if Random:
+        SILs = np.zeros(num_iterations)
+        DBs = np.zeros(num_iterations)
+        CHs = np.zeros(num_iterations)
+        DUNNs = np.zeros(num_iterations)
+
+        for i in range(num_iterations):
+            np.random.seed(i)
+            random_clusters = np.random.randint(num_clusters, size=len(embeddings))
+            silhouette_random = silhouette_score(embeddings, random_clusters)
+            SILs[i] = silhouette_random
+            db_random = davies_bouldin_score(embeddings, random_clusters)
+            DBs[i] = db_random
+            ch_random = calinski_harabasz_score(embeddings, random_clusters)
+            CHs[i] = ch_random
+            dist_dunn = pairwise_distances(embeddings)
+            dunn_random = dunn(dist_dunn, random_clusters)
+            DUNNs[i] = dunn_random
+
+        sil_random = np.mean(SILs).round(4)
+        sil_random_st = np.std(SILs).round(4)
+        db_random = np.mean(DBs).round(4)
+        db_random_st = np.std(DBs).round(4)
+        ch_random = np.mean(CHs).round(4)
+        ch_random_st = np.std(CHs).round(4)
+        dunn_random = np.mean(DUNNs).round(4)
+        dunn_random_st = np.std(DUNNs).round(4)
+
+        random_means = [sil_random, db_random, ch_random, dunn_random]
+        random_sds = [sil_random_st, db_random_st, ch_random_st, dunn_random_st]
+        
+        results = pd.DataFrame({'Random_mean': random_means,'Random_std':random_sds}, index=['silhouette','davies_bouldin','calinski_harabasz','dunn'])
+
+    else:
+        assert len(embeddings) == len(labels), "Length of embeddings and labels must match"
+        assert embeddings.ndim == 2, "Embeddings must be a 2D array"
+
+        results['SOMoC'] = {
+            'silhouette': silhouette_score(embeddings, labels, metric='cosine').round(4),
+            'davies_bouldin': davies_bouldin_score(embeddings, labels).round(4),
+            'calinski_harabasz': calinski_harabasz_score(embeddings, labels).round(4),
+            'dunn': dunn(pairwise_distances(embeddings), labels).round(4)
+        }
+        results = pd.DataFrame.from_dict(results)
+
+    return results
 
 
 def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int = 2, n_init: int = 2, init_params: str = 'kmeans', covariance_type: str = 'full', warm_start: bool = False) -> Tuple[pd.DataFrame, int]:
@@ -302,20 +361,22 @@ def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_pa
         print('GMM converged.')
     else:
         print('GMM did not converge. Please check you input configuration.')
+    
+    results_real = Calculate_CVIs(embeddings, labels=labels_final, Random = False)
+    print(results_real)
 
-    sil_ok = silhouette_score(embeddings, labels_final, metric='cosine').round(4)
-    db_score = davies_bouldin_score(embeddings, labels_final).round(4)
-    ch_score = calinski_harabasz_score(embeddings, labels_final).round(4)
-    dist_dunn = pairwise_distances(embeddings).round(4)
-    dunn_score = dunn(dist_dunn, labels_final).round(4)
+    # create DataFrame from real results
+    df_real = pd.DataFrame.from_dict(results_real, orient='columns')
+    print(df_real)
 
-    valid_metrics = [sil_ok, db_score, ch_score, dunn_score]
+    results_random = Calculate_CVIs(embeddings, labels=None, num_clusters=K, Random = True)
+    print(results_random)
+    # create DataFrame from random results
+    df_random = pd.DataFrame.from_dict(results_random, orient='columns')
+    print(df_random)
 
-    random_means,random_sds = Cluster_random(embeddings, num_iterations=500, num_clusters=K)
-
-    table_metrics = pd.DataFrame([valid_metrics, random_means, random_sds]).T
-    table_metrics = table_metrics.rename(index={0: 'Silhouette score', 1: "Davies Bouldin score",
-                                         2: 'Calinski Harabasz score', 3: 'Dunn Index'}, columns={0: "Value", 1: "Mean Random", 2: "SD Random"})
+    # concatenate DataFrames along columns axis
+    table_metrics = pd.concat([df_real, df_random], axis=1)
 
     print(f'GMM clustering took {time.monotonic() - start_time:.3f} seconds')
 
@@ -339,53 +400,6 @@ def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_pa
     table_metrics.to_csv(f'results_SOMoC_{name}/{name}_Validation_SOMoC.csv', index=True, header=True)
 
     return data_clustered
-
-def Cluster_random(embeddings: np.array, num_iterations: int = 500, num_clusters: int = 3):
-    """
-    Perform random clustering and calculate several CVIs.
-
-    Args:
-        embeddings (numpy.ndarray): An array of shape (n_samples, n_features) containing the data to be clustered.
-        num_iterations (int): Number of random clusterings to perform. Default is 500.
-        num_clusters (int): Number of clusters to generate randomly. Default is 3.
-
-    Returns:
-        Two lists containing CVIs means and stds (rounded to 4 decimal places):
-        - random_means: Average of all CVIs.
-        - random_sds: Standard deviation of all CVIs.
-    """
-
-    SILs = np.zeros(num_iterations)
-    DBs = np.zeros(num_iterations)
-    CHs = np.zeros(num_iterations)
-    DUNNs = np.zeros(num_iterations)
-
-    for i in range(num_iterations):
-        np.random.seed(i)
-        random_clusters = np.random.randint(num_clusters, size=len(embeddings))
-        silhouette_random = silhouette_score(embeddings, random_clusters)
-        SILs[i] = silhouette_random
-        db_random = davies_bouldin_score(embeddings, random_clusters)
-        DBs[i] = db_random
-        ch_random = calinski_harabasz_score(embeddings, random_clusters)
-        CHs[i] = ch_random
-        dist_dunn = pairwise_distances(embeddings)
-        dunn_random = dunn(dist_dunn, random_clusters)
-        DUNNs[i] = dunn_random
-
-    sil_random = np.mean(SILs).round(4)
-    sil_random_st = np.std(SILs).round(4)
-    db_random = np.mean(DBs).round(4)
-    db_random_st = np.std(DBs).round(4)
-    ch_random = np.mean(CHs).round(4)
-    ch_random_st = np.std(CHs).round(4)
-    dunn_random = np.mean(DUNNs).round(4)
-    dunn_random_st = np.std(DUNNs).round(4)
-
-    random_means = [sil_random, db_random, ch_random, dunn_random]
-    random_sds = [sil_random_st, db_random_st, ch_random_st, dunn_random_st]
-
-    return random_means,random_sds
 
 def Elbow_plot(results):
     """Draw the elbow plot of SIL score vs. K"""
