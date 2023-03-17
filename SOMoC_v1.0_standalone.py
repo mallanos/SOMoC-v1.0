@@ -42,8 +42,6 @@ from molvs import Standardizer
 # Molecules must be in the first column.
 input_file = None
 
-test_file = "test/focal_adhesion.csv"
-
 # If you already know the number of clusters in your data, then set K to this value.
 # Otherwise, set K=None to let SOMoC approaximate it by running a range of K values.
 # Alternatively, you can use the generated elbowplot to find K yourself and re-reun SOMoC with a fixed K.
@@ -83,18 +81,31 @@ def Make_dir(dirName: str):
         pass
 
 
-def Get_input_data():
+# def Get_input_data():
+#     """Get data from user input or use test dataset"""
+
+#     if input_file is not None:
+#         name = Get_name(input_file)
+#         data = pd.read_csv(input_file, delimiter=',', header=None)
+#     else:
+#         name = Get_name(test_file)
+#         data = pd.read_csv(test_file, delimiter=',', header=None)
+
+#     return data, name
+
+def Get_input_data(input_file=None, test_file="test/focal_adhesion.csv"):
     """Get data from user input or use test dataset"""
-
-    if input_file is not None:
-        name = Get_name(input_file)
-        data = pd.read_csv(input_file, delimiter=',', header=None)
-    else:
-        name = Get_name(test_file)
-        data = pd.read_csv(test_file, delimiter=',', header=None)
-
+    
+    file_path = input_file or test_file
+    if not os.path.exists(file_path):
+        raise ValueError(f'File not found: {file_path}')
+        
+    name = os.path.splitext(os.path.basename(file_path))[0]
+    
+    with open(file_path) as f:
+        data = pd.read_csv(f, delimiter=',', header=None)
+    
     return data, name
-
 
 def Standardize_molecules(data):
     """Standardize molecules using the MolVS package https://molvs.readthedocs.io/en/latest/"""
@@ -166,31 +177,6 @@ def Fingerprints_calculator(data: pd.DataFrame) -> np.ndarray:
     print('=' * 50)
 
     return fingerprints
-
-
-# def Fingerprints_calculator(data):
-#     """Calculate EState molecular fingerprints using the RDKit package"""
-#     print('='*50)
-#     print("Encoding")
-#     time_start = time.time()
-#     data_ = data.copy()
-#     if 'mol' not in data_:  # Check if already converted
-#         data_['mol'] = data_.iloc[:,0].apply(lambda x: Chem.MolFromSmiles(x))
-#     try:
-#         _EState = [FingerprintMol(x)[0]
-#                    for x in data_['mol']]  # [0]EState1 [1]EState2
-#         EState = np.stack(_EState, axis=0)
-#     except:
-#         print("Oh no! There was a problem with Fingerprint calculation of some smiles")
-#         print("Try using our standarization tool before clustering")
-#         print("LIDeB Standarization tool: https://share.streamlit.io/capigol/lbb-game/main/juego_lbb.py")
-
-#     print("Calculating EState molecular fingerprints...")
-#     print(
-#         f'Fingerprints calculation took {round(time.time()-time_start)} seconds')
-#     print('='*50)
-#     return EState  # X data, fingerprints values as a np array
-
 
 def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
                    metric: str = 'euclidean', random_state: int = 42,
