@@ -172,7 +172,7 @@ def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
     Raises:
         ValueError: If the input is not a NumPy array or the number of neighbors is greater than the length of the input data.
     """
-        
+
     if not isinstance(X, np.ndarray):
         raise ValueError("Input must be a NumPy array")
     
@@ -217,7 +217,7 @@ def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int
     print("Clustering")
     print(f'Running GMM clustering for {max_K} iterations..')
     
-    time_start = time.time()
+    start_time = time.monotonic()
 
     temp = {i: [] for i in range(max_K)}  # pre-allocate the dictionary
 
@@ -235,8 +235,10 @@ def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int
         temp, orient='index', columns=['Clusters','Silhouette', 'sil_stdv'])
     results_sorted = results.sort_values(['Silhouette'], ascending=False)
     K_loop = results_sorted.index[0]  # Get max Sil K
-    print(f'GMM clustering loop took {round(time.time()-time_start)} seconds')
+    
+    print(f'GMM clustering loop took {time.monotonic() - start_time:.3f} seconds')
     print(' '*100)
+    
     return results, int(K_loop)
 
 
