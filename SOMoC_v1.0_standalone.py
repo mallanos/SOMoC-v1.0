@@ -36,7 +36,6 @@ from molvs import Standardizer
 ###################################### CONFIGURATION ######################################
 ###########################################################################################
 
-# Folder with files
 # Input file is a .CSV file with one molecule per line in SMILES format.
 # Molecules must be in the first column.
 input_file = None
@@ -47,7 +46,7 @@ input_file = None
 K = None            # Optimal number of clusters K
 
 # Perform molecule standardization using the MolVS package
-smiles_standardization = False       
+smiles_standardization = True       
 
 ### UMAP parameters ###
 n_neighbors = 10    # The size of local neighborhood used for manifold approximation. Larger values result in more global views of the manifold, while smaller values result in more local data being preserved.
@@ -93,31 +92,46 @@ def Get_input_data(input_file=None, test_file="test/focal_adhesion.csv"):
     
     return data, name
 
-def Standardize_molecules(data):
-    """Standardize molecules using the MolVS package https://molvs.readthedocs.io/en/latest/"""
-    print('='*50)
-    print("Standardize molecules")
+def Standardize_molecules(data: pd.DataFrame):
+    """Standardize molecules using the MolVS package https://molvs.readthedocs.io/en/latest/.
 
-    print('By default SOMoC will standardize molecules before fingerprint calculation. However, you can disable standardization by setting smiles_standardization=False.')
-    time_start = time.time()
+    Parameters
+    ----------
+    data : pandas.DataFrame
+        A DataFrame containing a column of SMILES strings to be standardized in the first column.
+
+    Returns
+    -------
+    pandas.DataFrame
+        A copy of the input DataFrame with an additional column of standardized RDKit molecules.
+
+    """
+
+    time_start = time.monotonic()
     data_ = data.copy()
 
-    molec_clean = []
-    s = Standardizer()
+    list_of_smiles = data_.iloc[:, 0]
+    standardized_mols = [np.nan] * len(list_of_smiles)
 
-    list_of_smiles = data_.iloc[:,0]
-
-    for i, molecule in enumerate(list_of_smiles, start = 1):
+    for i, smiles in enumerate(list_of_smiles):
         try:
-            mol = Chem.MolFromSmiles(molecule)
-            estandardized = s.super_parent(mol)
-            molec_clean.append(estandardized)
-        except:
-            print(f'Something went wrong with molecule number {i}')
+            mol = Chem.MolFromSmiles(smiles)
+            standardized_mol = Standardizer().standardize(mol)
+            # standardized_mol = Standardizer().super_parent(mol)
+            standardized_mols[i] = standardized_mol
+        except Exception as e:
+            print(f"Failed to process molecule {i+1}: ({e})")
 
-    data_['mol'] = molec_clean
-    print(f'{len(molec_clean)} molecules processed')
-    print(f'Standardization took {round(time.time()-time_start)} seconds')
+    data_['mol'] = standardized_mols
+    data_ = data_.dropna() # Drop failed molecules
+
+    num_processed_mols = len(standardized_mols)
+    num_failed_mols = len([m for m in standardized_mols if m is np.nan])
+
+    print(f'{num_processed_mols-num_failed_mols} molecules processed in {time.monotonic() - time_start:.3f} seconds')
+    
+    if num_failed_mols:
+        print(f"{num_failed_mols} molecules failed to be processed")
 
     return data_
 
@@ -154,8 +168,10 @@ def Fingerprints_calculator(data: pd.DataFrame) -> np.ndarray:
             fp = FingerprintMol(mol)[0]  # EState fingerprint
             fps[i] = fp
             i += 1
-        except:
-            raise RuntimeError("Error in fingerprint calculation for molecule with SMILES: " + Chem.MolToSmiles(mol))
+        # except:
+        except Exception as e:
+            print(f"Failed to process molecule {i+1}: ({e})")
+            # raise RuntimeError("Error in fingerprint calculation for molecule with SMILES: " + Chem.MolToSmiles(mol))
 
     fingerprints = np.stack(fps, axis=0)
 
