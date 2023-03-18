@@ -11,7 +11,6 @@
 ###########################################################################################
 # The following packages are required: SKlearn, RDKit, UMAP, Molvs, validclust and Plotly.
 # Please, meake sure you have them installed before running the program.
-from tqdm import tqdm
 import pandas as pd
 from array import array
 import time
@@ -21,6 +20,8 @@ from datetime import date
 from pathlib import Path
 import numpy as np
 import json
+import logging
+from tqdm import tqdm
 from datetime import datetime
 
 import plotly.express as plx
@@ -33,7 +34,6 @@ import umap
 from rdkit import Chem
 from rdkit.Chem.EState.Fingerprinter import FingerprintMol
 from molvs import Standardizer
-
 
 ###################################### CONFIGURATION ######################################
 ###########################################################################################
@@ -48,7 +48,7 @@ input_file = None
 K = None            # Optimal number of clusters K
 
 # Perform molecule standardization using the MolVS package
-smiles_standardization = True       
+smiles_standardization = False       
 
 ### UMAP parameters ###
 n_neighbors = 10    # The size of local neighborhood used for manifold approximation. Larger values result in more global views of the manifold, while smaller values result in more local data being preserved.
@@ -57,12 +57,12 @@ random_state = 10   # Use a fixed seed for reproducibility.
 metric = "jaccard"  # The metric to use to compute distances in high dimensional space.
 
 ### GMM parameters ###
-max_K = 10                      # Max number of clusters to cosidering during the GMM loop
+max_K = 25                      # Max number of clusters to cosidering during the GMM loop
 Kers = np.arange(2, max_K+1, 1) # Generate the range of K values to explore
-iterations = 3                  # Iterations of GMM to run for each K
+iterations = 10                  # Iterations of GMM to run for each K
 n_init = 5                      # Number of initializations on each GMM run, then just keep the best one.
 init_params = 'kmeans'          # How to initialize. Can be random or K-means
-covariance_type = 'diag'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
+covariance_type = 'full'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
 warm_start = False
 
 #################################### Helper functions #####################################
@@ -70,8 +70,8 @@ warm_start = False
 
 def Get_name(archive):
     """strip path and extension to return the name of a file"""
+    # name = os.path.splitext(os.path.basename(archive))[0]
     return os.path.basename(archive).split('.')[0]
-
 
 def Make_dir(dirName: str):
     """Create a directory and not fail if it already exist"""
@@ -87,11 +87,13 @@ def Get_input_data(input_file=None, test_file="test/focal_adhesion.csv"):
     if not os.path.exists(file_path):
         raise ValueError(f'File not found: {file_path}')
         
-    name = os.path.splitext(os.path.basename(file_path))[0]
-    
     with open(file_path) as f:
         data = pd.read_csv(f, delimiter=',', header=None)
-    
+
+    name = Get_name(file_path)
+    logging.info(f'Loading {name} dataset')
+    logging.info(f'{len(data)} molecules loaded..')
+
     return data, name
 
 def Standardize_molecules(data: pd.DataFrame) -> pd.DataFrame:
@@ -108,21 +110,20 @@ def Standardize_molecules(data: pd.DataFrame) -> pd.DataFrame:
         A copy of the input DataFrame with an additional column of standardized RDKit molecules.
 
     """
-
-    time_start = time.monotonic()
     data_ = data.copy()
 
     list_of_smiles = data_.iloc[:, 0]
     standardized_mols = [np.nan] * len(list_of_smiles)
 
-    for i, smiles in tqdm(enumerate(list_of_smiles), total=len(list_of_smiles)):
+    for i, smiles in tqdm(enumerate(list_of_smiles), total=len(list_of_smiles), desc='Standardizing molecules'):
         try:
             mol = Chem.MolFromSmiles(smiles)
             standardized_mol = Standardizer().standardize(mol)
             # standardized_mol = Standardizer().super_parent(mol)
             standardized_mols[i] = standardized_mol
         except Exception as e:
-            print(f"Failed to process molecule {i+1}: ({e})")
+            logging.warning(f"Failed to process molecule {i+1}: ({e})")
+
 
     data_['mol'] = standardized_mols
     data_ = data_.dropna() # Drop failed molecules
@@ -130,10 +131,10 @@ def Standardize_molecules(data: pd.DataFrame) -> pd.DataFrame:
     num_processed_mols = len(standardized_mols)
     num_failed_mols = len([m for m in standardized_mols if m is np.nan])
 
-    print(f'{num_processed_mols-num_failed_mols} molecules processed in {time.monotonic() - time_start:.3f} seconds')
-    
+    logging.info(f'{num_processed_mols-num_failed_mols} molecules processed')
+
     if num_failed_mols:
-        print(f"{num_failed_mols} molecules failed to be processed")
+        logging.warning(f"{num_failed_mols} molecules failed to be standardized")
 
     return data_
 
@@ -156,33 +157,24 @@ def Fingerprints_calculator(data: pd.DataFrame) -> np.ndarray:
     else:
         smiles_list = data.iloc[:,0]
     
-    print('=' * 50)
-    # print("Calculating EState molecular fingerprints...")
-    print("Encoding")
-
-    time_start = time.monotonic()
+    logging.info("ENCODING")
+    logging.info("Calculating EState molecular fingerprints...")
 
     mols = [Chem.MolFromSmiles(smiles) for smiles in smiles_list]
     fps = [None] * len(mols)
-    i=0
-    for mol in mols:
+    for i, mol in tqdm(enumerate(mols), total=len(mols), desc='Calculating fingerprints'):
         try:
             fp = FingerprintMol(mol)[0]  # EState fingerprint
             fps[i] = fp
-            i += 1
         except Exception as e:
-            print(f"Failed fingerprint calculation for molecule {i+1}: ({e})")
+            logging.warning(f"Failed fingerprint calculation for molecule {i+1}: ({e})")
 
     fingerprints = np.stack(fps, axis=0)
-
-    print(f'Fingerprints calculation took {time.monotonic() - time_start:.3f} seconds')
-    print('=' * 50)
 
     return fingerprints
 
 def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
-                   metric: str = 'euclidean', random_state: int = 42,
-                   verbose: bool = True) -> Tuple[np.ndarray, int]:
+                   metric: str = 'jaccard', random_state: int = 42) -> Tuple[np.ndarray, int]:
 
     """
     Reduce feature space using the UMAP algorithm.
@@ -193,7 +185,6 @@ def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
         min_dist (float): Minimum distance threshold for the UMAP algorithm.
         metric (str): Distance metric to use for the UMAP algorithm.
         random_state (int): Random seed for the UMAP algorithm.
-        verbose (bool): Whether to print progress messages.
 
     Returns:
         Tuple[np.ndarray, int]: A tuple containing the reduced feature space (as a NumPy array) and the number of components
@@ -203,27 +194,24 @@ def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
         ValueError: If the input is not a NumPy array or the number of neighbors is greater than the length of the input data.
     """
 
+    logging.info('REDUCING')
+
     if not isinstance(X, np.ndarray):
+        logging.error("Input must be a NumPy array")
         raise ValueError("Input must be a NumPy array")
-    
+        
     if n_neighbors >= len(X):
+        logging.error("The number of neighbors must be smaller than the number of molecules to cluster")
         raise ValueError("The number of neighbors must be smaller than the number of molecules to cluster")
 
-    if verbose:
-        print('Reducing feature space with UMAP...')
+    n_components = int(np.ceil(np.log(len(X))/np.log(4)))
+    n_neighbors = max(10, int(np.sqrt(X.shape[0])))
 
-    start_time = time.monotonic()
-
-    # Set a lower bound to the number of components
-    n_components = max(int(len(X) * 0.01), 3)
+    logging.info(f'Running UMAP with {n_components} components and {n_neighbors} neighbors.')
 
     reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=n_components, metric=metric,
                         random_state=random_state).fit(X)
     embedding = reducer.transform(X)
-
-    if verbose:
-        print(f'{embedding.shape[1]} features have been retained.')
-        print(f'UMAP took {time.monotonic() - start_time:.3f} seconds')
 
     return embedding, n_components
 
@@ -288,9 +276,6 @@ def Calculate_CVIs(embeddings: np.ndarray, labels: List, Random: bool = True, nu
 
     return results
 
-
-from tqdm import tqdm
-
 def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int = 2, n_init: int = 2, init_params: str = 'kmeans', covariance_type: str = 'full', warm_start: bool = False) -> Tuple[pd.DataFrame, int]:
     """
     Runs GMM clustering for a range of K values and returns the K value which maximizes the silhouette score.
@@ -307,13 +292,11 @@ def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int
     Returns:
     Tuple[pd.DataFrame, int]: A tuple of the results dataframe and the K value which maximizes the silhouette score.
     """
-    print("Clustering")
-    
-    start_time = time.monotonic()
+    logging.info("SOMoC will try to find the optimal K")
 
     temp = {i: [] for i in range(max_K)}  # pre-allocate the dictionary
 
-    for n in tqdm(range(2, max_K)):
+    for n in tqdm(range(2, max_K), desc='Optimizing the number of cluters'):
         temp_sil = [None] * iterations # pre-allocate the list
         for x in range(iterations):
             gmm = GMM(n, n_init=n_init, init_params=init_params, covariance_type=covariance_type,
@@ -328,9 +311,6 @@ def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int
     results_sorted = results.sort_values(['Silhouette'], ascending=False)
     K_loop = results_sorted.index[0]  # Get max Sil K
     
-    print(f'GMM clustering loop took {time.monotonic() - start_time:.3f} seconds')
-    print(' '*100)
-
     return results, int(K_loop)
 
 def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_params: str ='kmeans', warm_start: bool=False, covariance_type:str='full', random_state=None):
@@ -349,11 +329,9 @@ def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_pa
     Returns:
         data_clustered (pandas.DataFrame): The input data with an additional 'cluster' column.
     """
-    print('='*50)
-    print("Final clustering")
-    print(f'Running GMM with K = {K}')
 
-    start_time = time.monotonic()
+    # logging.info("CLUSTERING")
+    logging.info(f'Running final clustering with K = {K}')
 
     GMM_final = GMM(K, n_init=n_init, init_params=init_params, warm_start=warm_start,
                     covariance_type=covariance_type, random_state=random_state, verbose=0)
@@ -361,26 +339,19 @@ def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_pa
     labels_final = GMM_final.predict(embeddings)
 
     if GMM_final.converged_:
-        print('GMM converged.')
+        logging.info('GMM converged.')
     else:
-        print('GMM did not converge. Please check you input configuration.')
-    
+        logging.warning('GMM did not converge. Please check you input configuration.')
+       
+    logging.info('Calculating CVIs')
     results_real = Calculate_CVIs(embeddings, labels=labels_final, Random = False)
     # create DataFrame from real results
     df_real = pd.DataFrame.from_dict(results_real, orient='columns')
-
     results_random = Calculate_CVIs(embeddings, labels=None, num_clusters=K, Random = True)
     # create DataFrame from random results
     df_random = pd.DataFrame.from_dict(results_random, orient='columns')
-
     # concatenate DataFrames along columns axis
     results_CVIs = pd.concat([df_real, df_random], axis=1)
-
-    print(f'GMM clustering took {time.monotonic() - start_time:.3f} seconds')
-
-    print('='*50)
-    print("Validation metrics")
-    print(results_CVIs)
 
     cluster_final = pd.DataFrame({'cluster': labels_final}, index=data.index)
     results_clustered = data.join(cluster_final)
@@ -391,11 +362,11 @@ def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_pa
                 lambda x: Chem.MolToSmiles(x))
             results_clustered.drop(['mol'], axis=1, inplace=True)
         except Exception as e:
-            print('Something went wrong converting standardized molecules back to SMILES code..: {e}')
+            logging.warning('Something went wrong converting standardized molecules back to SMILES code..: {e}')
             pass
 
-    results_clustered.to_csv(f'results_SOMoC_{name}/{name}_Clustered_SOMoC.csv', index=True, header=True)
-    results_CVIs.to_csv(f'results_SOMoC_{name}/{name}_Validation_SOMoC.csv', index=True, header=True)
+    results_clustered.to_csv(f'results/{name}/{name}_Clustered_SOMoC.csv', index=True, header=True)
+    results_CVIs.to_csv(f'results/{name}/{name}_Validation_SOMoC.csv', index=True, header=True)
 
     return results_clustered, results_CVIs
 
@@ -424,13 +395,7 @@ def Elbow_plot(results):
 
     fig.update_layout(margin=dict(t=60, r=20, b=20, l=20), autosize=True)
 
-    fig.write_html(f'results_SOMoC_{name}/{name}_elbowplot_SOMoC.html')
-
-    print('By dafault SOMoC uses the K which resulted in the highest Silhouette score.')
-    print('However, you can check the Silhouette vs. K elbow plot to choose the optimal K, identifying an inflection point in the curve (elbow method)')
-    print('Then, re-run SOMoC with a fixed K.')
-    print("Note: Silhouette score is bounded [-1,1], the closer to 1 the better")
-
+    fig.write_html(f'results/{name}/{name}_elbowplot_SOMoC.html')
 
 def Distribution_plot(data_clustered):
     """Plot the clusters size distribution"""
@@ -454,9 +419,9 @@ def Distribution_plot(data_clustered):
                      tickfont=dict(family='Arial', size=16, color='black'),
                      title_font=dict(size=20, family='Calibri', color='black'))
 
-    fig.write_html(f'results_SOMoC_{name}/{name}_size_distribution_SOMoC.html')
+    fig.write_html(f'results/{name}/{name}_size_distribution_SOMoC.html')
 
-    sizes.to_csv(f'results_SOMoC_{name}/{name}_Size_distribution_SOMoC.csv', index=True, header=True)  # Write the .CSV file
+    sizes.to_csv(f'results/{name}/{name}_Size_distribution_SOMoC.csv', index=True, header=True)  # Write the .CSV file
 
     return
 
@@ -465,6 +430,7 @@ def Save_settings(results_CVIs: pd.DataFrame):
     Create a dictionary with the current run settings, save it as a JSON file,
     and return it.
     """
+    
     # Create a dictionary with the settings
     settings = {}
     settings["timestamp"] = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -479,6 +445,7 @@ def Save_settings(results_CVIs: pd.DataFrame):
     settings["gmm"] = {
         "max_n_clusters": max_K,
         "n_init": n_init,
+        "iterations": iterations,
         "init_params": init_params,
         "covariance_type": covariance_type
     }
@@ -491,7 +458,7 @@ def Save_settings(results_CVIs: pd.DataFrame):
     }
 
     # Save the settings as a JSON file
-    file_path = f"results_SOMoC_{name}/{name}_{settings['timestamp']}.json"
+    file_path = f"results/{name}/{name}_{settings['timestamp']}.json"
 
     with open(file_path, "w") as json_file:
         json.dump(settings, json_file, indent="\t")
@@ -501,49 +468,66 @@ def Save_settings(results_CVIs: pd.DataFrame):
 ####################################### SOMoC main ########################################
 ###########################################################################################
 
-
 if __name__ == '__main__':
 
+    logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        # logging.filemode('w'),
+        logging.FileHandler("SOMoC.log", mode='w'),
+        logging.StreamHandler()
+    ]
+)
     start_time = time.monotonic()
 
-    print('-'*50)
+    print('='*100)
 
     # Get input data
     data_raw, name = Get_input_data(input_file=input_file)
-
+    
     # Create output dir
-    Make_dir(f'results_SOMoC_{name}')
+    Make_dir(f'results/{name}')
 
     # Standardize molecules
     if smiles_standardization == True:
         data = Standardize_molecules(data_raw)
     else:
-        print('Skipping molecules standardization..\n')
+        logging.info('Skipping molecules standardization.')
         data = data_raw
 
+    print('='*100)
     # Calculate Fingerprints
     X = Fingerprints_calculator(data)
 
+    print('='*100)
     # Reduce feature space with UMAP
-    embedding, n_components = UMAP_reduction(X, n_neighbors=n_neighbors, min_dist=min_dist, metric=metric, random_state=random_state, verbose=True)
+    embedding, n_components = UMAP_reduction(X, n_neighbors=n_neighbors, min_dist=min_dist, metric=metric, random_state=random_state)
+   
+    print('='*100)
     # If K is not set, run the GMM clustering loop to get K
     if K is None:
-        results, K = GMM_clustering_loop(embedding, max_K=max_K, iterations=iterations, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
-        Elbow_plot(results)
-
+        results_loop, K = GMM_clustering_loop(embedding, max_K=max_K, iterations=iterations, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
+    
     # Run the final clustering and calculate all CVIs
     results_clustered, results_CVIs = GMM_clustering_final(embedding, K=K, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
-
-    # Generate distribution plot and .CSV file
+   
+    print('='*100)
+    logging.info('Generating plots.')
+    Elbow_plot(results_loop)
     Distribution_plot(results_clustered)
 
-    # Write the settings JSON file
-    Save_settings(results_CVIs)
+    logging.info('Saving run settings to JSON file.')
+    Save_settings(results_CVIs)    # Write the settings JSON file
 
-    print('='*50)
-    print('ALL DONE !')
-    print(f'SOMoC run took {time.monotonic() - start_time:.3f} seconds')
-    print('='*50)
+    logging.info('ALL DONE !')
+    logging.info(f'SOMoC run took {time.monotonic() - start_time:.3f} seconds')
+
+    print('='*100)
+    print("CVIs results")
+    print(results_CVIs)
+    print('='*100)
+
 
 
     
