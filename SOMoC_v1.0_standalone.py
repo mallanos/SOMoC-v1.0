@@ -49,29 +49,83 @@ input_file = None
 # If you already know the number of clusters in your data, then set K to this value.
 # Otherwise, set K=None to let SOMoC approaximate it by running a range of K values.
 # Alternatively, you can use the generated elbowplot to find K yourself and re-reun SOMoC with a fixed K.
-K = None            # Optimal number of clusters K
+# K = None            # Optimal number of clusters K
 
 # Perform molecule standardization using the MolVS package
-smiles_standardization = False       
+# smiles_standardization = False       
 
 ### UMAP parameters ###
-n_neighbors = 10    # The size of local neighborhood used for manifold approximation. Larger values result in more global views of the manifold, while smaller values result in more local data being preserved.
-min_dist = 0.0      # The effective minimum distance between embedded points. Smaller values will result in a more clustered/clumped embedding where nearby points on the manifold are drawn closer together, while larger values will result on a more even dispersal of points.
-random_state = 10   # Use a fixed seed for reproducibility.
-metric = "jaccard"  # The metric to use to compute distances in high dimensional space.
-init = 'pca'
+# n_neighbors = 10    # The size of local neighborhood used for manifold approximation. Larger values result in more global views of the manifold, while smaller values result in more local data being preserved.
+# min_dist = 0.0      # The effective minimum distance between embedded points. Smaller values will result in a more clustered/clumped embedding where nearby points on the manifold are drawn closer together, while larger values will result on a more even dispersal of points.
+# random_state = 10   # Use a fixed seed for reproducibility.
+# metric = "jaccard"  # The metric to use to compute distances in high dimensional space.
+# init = 'pca'
 
 ### GMM parameters ###
-max_K = 3                      # Max number of clusters to cosidering during the GMM loop
-Kers = np.arange(2, max_K+1, 1) # Generate the range of K values to explore
-iterations = 2                  # Iterations of GMM to run for each K
-n_init = 2                      # Number of initializations on each GMM run, then just keep the best one.
-init_params = 'kmeans'          # How to initialize. Can be random or K-means
-covariance_type = 'diag'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
-warm_start = False
+# max_K = 3                       # Max number of clusters to cosidering during the GMM loop
+# Kers = np.arange(2, max_K+1, 1) # Generate the range of K values to explore
+# iterations = 2                  # Iterations of GMM to run for each K
+# n_init = 2                      # Number of initializations on each GMM run, then just keep the best one.
+# init_params = 'kmeans'          # How to initialize. Can be random or K-means
+# covariance_type = 'diag'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
+# warm_start = False
 
 #################################### Helper functions #####################################
 ###########################################################################################
+class Settings:
+    def __init__(self, config_file: str) -> None:
+        self.load_settings(config_file)
+
+    def load_settings(self, config_file: str) -> None:
+        # Load settings from the JSON file
+        try:
+            with open(config_file) as f:
+                config = json.load(f)
+        except FileNotFoundError:
+            logging.warning(f"Error: {config_file} not found.")
+            return
+        except json.JSONDecodeError:
+            logging.warning(f"Error: Invalid JSON syntax in {config_file}.")
+            return
+
+        # Set default values for the settings
+        defaults: Dict[str, Any] = {
+            'fingerprint_type': 'EState',
+            'standardize_molec': False,
+            'umap': {
+                'n_neighbors': 15,
+                'min_dist': 0.1,
+                'n_components': 2,
+                'metric': 'euclidean',
+                'init': 'spectral'
+            },
+            'gmm': {
+                'max_n_clusters': 10,
+                'n_init': 10,
+                'iterations': 10,
+                'init_params': 'kmeans',
+                'covariance_type': 'full',
+                'warm_start' : False
+            },
+            'random_state': 10,
+            'max_K': 5,
+            'optimal_K': False
+        }
+
+        # Update the defaults with any values from the config file
+        settings_dict: Dict[str, Any] = {}
+        for k, v in defaults.items():
+            if k in config:
+                if isinstance(v, dict):
+                    settings_dict[k] = {**v, **config[k]}
+                else:
+                    settings_dict[k] = config[k]
+            else:
+                settings_dict[k] = v
+
+        # Set the settings as instance variables
+        for k, v in settings_dict.items():
+            setattr(self, k, v)
 
 def Get_name(archive):
     """strip path and extension to return the name of a file"""
@@ -157,6 +211,7 @@ def Fingerprints_calculator(data: pd.DataFrame) -> np.ndarray:
         ValueError: If the input DataFrame does not contain a column of SMILES strings.
         RuntimeError: If there is a problem with fingerprint calculation of some SMILES.
     """
+
     if 'smiles' in data.columns:
         smiles_list = data['smiles']
     else:
@@ -178,8 +233,7 @@ def Fingerprints_calculator(data: pd.DataFrame) -> np.ndarray:
 
     return fingerprints
 
-def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
-                   init: str = 'spectral', metric: str = 'jaccard', random_state: int = 42) -> Tuple[np.ndarray, int]:
+def UMAP_reduction(X: np.ndarray, settings) -> Tuple[np.ndarray, int]:
 
     """
     Reduce feature space using the UMAP algorithm.
@@ -198,6 +252,11 @@ def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
     Raises:
         ValueError: If the input is not a NumPy array or the number of neighbors is greater than the length of the input data.
     """
+    n_neighbors = settings.umap['n_neighbors']
+    min_dist = settings.umap['min_dist']
+    init = settings.umap['init']
+    metric = settings.umap['metric']
+    random_state = settings.random_state
 
     logging.info('REDUCING')
 
@@ -281,7 +340,7 @@ def Calculate_CVIs(embeddings: np.ndarray, labels: List, Random: bool = True, nu
 
     return results
 
-def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int = 2, n_init: int = 2, init_params: str = 'kmeans', covariance_type: str = 'full', warm_start: bool = False) -> Tuple[pd.DataFrame, int]:
+def GMM_clustering_loop(embeddings: np.ndarray, settings) -> Tuple[pd.DataFrame, int]:
     """
     Runs GMM clustering for a range of K values and returns the K value which maximizes the silhouette score.
 
@@ -297,6 +356,13 @@ def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int
     Returns:
     Tuple[pd.DataFrame, int]: A tuple of the results dataframe and the K value which maximizes the silhouette score.
     """
+    max_K = settings.max_K
+    iterations = settings.gmm['iterations']
+    n_init = settings.gmm['n_init']
+    init_params = settings.gmm['init_params']
+    covariance_type = settings.gmm['covariance_type']
+    warm_start = settings.gmm['warm_start']
+
     logging.info("SOMoC will try to find the optimal K")
 
     temp = {i: [] for i in range(max_K)}  # pre-allocate the dictionary
@@ -318,7 +384,7 @@ def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int
     
     return results, int(K_loop)
 
-def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_params: str ='kmeans', warm_start: bool=False, covariance_type:str='full', random_state=None):
+def GMM_clustering_final(embeddings: np.array, settings, K: int= 3):
     
     """
     Cluster the dataset using the optimal K value, and calculate several CVIs
@@ -334,8 +400,12 @@ def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_pa
     Returns:
         data_clustered (pandas.DataFrame): The input data with an additional 'cluster' column.
     """
+    n_init = settings.gmm['n_init']
+    init_params = settings.gmm['init_params']
+    covariance_type = settings.gmm['covariance_type']
+    warm_start = settings.gmm['warm_start']
+    random_state = settings.random_state
 
-    # logging.info("CLUSTERING")
     logging.info(f'Running final clustering with K = {K}')
 
     GMM_final = GMM(K, n_init=n_init, init_params=init_params, warm_start=warm_start,
@@ -462,48 +532,48 @@ def Distribution_plot(model, embedding):
     plt.tight_layout()
     plt.savefig(f'results/{name}/SIL_bycluster_SOMoC.png')
 
-def Save_settings(results_CVIs: pd.DataFrame):
-    """
-    Create a dictionary with the current run settings, save it as a JSON file,
-    and return it.
-    """
+# def Save_settings(results_CVIs: pd.DataFrame):
+#     """
+#     Create a dictionary with the current run settings, save it as a JSON file,
+#     and return it.
+#     """
     
-    # Create a dictionary with the settings
-    settings = {}
-    settings["timestamp"] = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    settings["fingerprint_type"] = "EState1"
-    settings["umap"] = {
-        "n_neighbors": n_neighbors,
-        "min_dist": min_dist,
-        "n_components": n_components,
-        "random_state": random_state,
-        "metric": metric,
-        "init":init
-    }
-    settings["gmm"] = {
-        "max_n_clusters": max_K,
-        "n_init": n_init,
-        "iterations": iterations,
-        "init_params": init_params,
-        "covariance_type": covariance_type,
-        "warm_start" : False
+#     # Create a dictionary with the settings
+#     settings = {}
+#     settings["timestamp"] = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+#     settings["fingerprint_type"] = "EState1"
+#     settings["umap"] = {
+#         "n_neighbors": n_neighbors,
+#         "min_dist": min_dist,
+#         "n_components": n_components,
+#         "random_state": random_state,
+#         "metric": metric,
+#         "init":init
+#     }
+#     settings["gmm"] = {
+#         "max_n_clusters": max_K,
+#         "n_init": n_init,
+#         "iterations": iterations,
+#         "init_params": init_params,
+#         "covariance_type": covariance_type,
+#         "warm_start" : False
 
-    }
-    settings["optimal_K"] = K
-    settings["CVIs"] =  {
-        "silhouette": results_CVIs.loc['silhouette']['SOMoC'],
-        "calinski_harabasz": results_CVIs.loc['calinski_harabasz']['SOMoC'],
-        "davies_bouldin": results_CVIs.loc['davies_bouldin']['SOMoC'],
-        "dunn": results_CVIs.loc['dunn']['SOMoC']
-    }
+#     }
+#     settings["optimal_K"] = K
+#     settings["CVIs"] =  {
+#         "silhouette": results_CVIs.loc['silhouette']['SOMoC'],
+#         "calinski_harabasz": results_CVIs.loc['calinski_harabasz']['SOMoC'],
+#         "davies_bouldin": results_CVIs.loc['davies_bouldin']['SOMoC'],
+#         "dunn": results_CVIs.loc['dunn']['SOMoC']
+#     }
 
-    # Save the settings as a JSON file
-    file_path = f"results/{name}/{name}_{settings['timestamp']}.json"
+#     # Save the settings as a JSON file
+#     file_path = f"results/{name}/{name}_{settings['timestamp']}.json"
 
-    with open(file_path, "w") as json_file:
-        json.dump(settings, json_file, indent="\t")
+#     with open(file_path, "w") as json_file:
+#         json.dump(settings, json_file, indent="\t")
 
-    return settings
+#     return settings
 
 ####################################### SOMoC main ########################################
 ###########################################################################################
@@ -519,16 +589,18 @@ if __name__ == '__main__':
 )
     start_time = time.monotonic()
 
+    settings = Settings('config.json')
+
     print('='*100)
 
     # Get input data
-    data_raw, name = Get_input_data(input_file=input_file)
+    data_raw, name = Get_input_data(input_file)
     
     # Create output dir
     Make_dir(f'results/{name}')
 
     # Standardize molecules
-    if smiles_standardization == True:
+    if settings.standardize_molec == True:
         data = Standardize_molecules(data_raw)
     else:
         logging.info('Skipping molecules standardization.')
@@ -540,23 +612,24 @@ if __name__ == '__main__':
 
     print('='*100)
     # Reduce feature space with UMAP
-    embedding, n_components = UMAP_reduction(X, n_neighbors=n_neighbors, min_dist=min_dist, metric=metric, random_state=random_state)
+    embedding, n_components = UMAP_reduction(X, settings)
    
     print('='*100)
-    # If K is not set, run the GMM clustering loop to get K
-    if K is None:
-        results_loop, K = GMM_clustering_loop(embedding, max_K=max_K, iterations=iterations, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
-    
-    # Run the final clustering and calculate all CVIs
-    results_clustered, results_CVIs, results_model = GMM_clustering_final(embedding, K=K, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
-   
+    if settings.optimal_K is not False:
+        # Run the clustering and calculate all CVIs
+        results_clustered, results_CVIs, results_model = GMM_clustering_final(embedding, settings, K=settings.optimal_K)
+    else:
+        # If optimal_K is not set, run the GMM clustering loop to get K
+        results_loop, optimal_K = GMM_clustering_loop(embedding, settings)
+        results_clustered, results_CVIs, results_model = GMM_clustering_final(embedding, settings, K=optimal_K)
+
     print('='*100)
     logging.info('Generating plots.')
-    Elbow_plot(results_loop)
+    # Elbow_plot(results_loop)
     Distribution_plot(results_model, embedding)
 
-    logging.info('Saving run settings to JSON file.')
-    Save_settings(results_CVIs)    # Write the settings JSON file
+    # logging.info('Saving run settings to JSON file.')
+    # Save_settings(results_CVIs)    # Write the settings JSON file
 
     logging.info('ALL DONE !')
     logging.info(f'SOMoC run took {time.monotonic() - start_time:.3f} seconds')
