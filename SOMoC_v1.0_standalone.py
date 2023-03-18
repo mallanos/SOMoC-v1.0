@@ -11,7 +11,7 @@
 ###########################################################################################
 # The following packages are required: SKlearn, RDKit, UMAP, Molvs, validclust and Plotly.
 # Please, meake sure you have them installed before running the program.
-
+from tqdm import tqdm
 import pandas as pd
 from array import array
 import time
@@ -20,6 +20,8 @@ from typing import List, Tuple, Union
 from datetime import date
 from pathlib import Path
 import numpy as np
+import json
+from datetime import datetime
 
 import plotly.express as plx
 import plotly.graph_objects as go
@@ -113,7 +115,7 @@ def Standardize_molecules(data: pd.DataFrame) -> pd.DataFrame:
     list_of_smiles = data_.iloc[:, 0]
     standardized_mols = [np.nan] * len(list_of_smiles)
 
-    for i, smiles in enumerate(list_of_smiles):
+    for i, smiles in tqdm(enumerate(list_of_smiles), total=len(list_of_smiles)):
         try:
             mol = Chem.MolFromSmiles(smiles)
             standardized_mol = Standardizer().standardize(mol)
@@ -287,6 +289,8 @@ def Calculate_CVIs(embeddings: np.ndarray, labels: List, Random: bool = True, nu
     return results
 
 
+from tqdm import tqdm
+
 def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int = 2, n_init: int = 2, init_params: str = 'kmeans', covariance_type: str = 'full', warm_start: bool = False) -> Tuple[pd.DataFrame, int]:
     """
     Runs GMM clustering for a range of K values and returns the K value which maximizes the silhouette score.
@@ -304,13 +308,12 @@ def GMM_clustering_loop(embeddings: np.ndarray, max_K: int = 10, iterations: int
     Tuple[pd.DataFrame, int]: A tuple of the results dataframe and the K value which maximizes the silhouette score.
     """
     print("Clustering")
-    print(f'Running GMM clustering for {max_K} iterations..')
     
     start_time = time.monotonic()
 
     temp = {i: [] for i in range(max_K)}  # pre-allocate the dictionary
 
-    for n in range(2, max_K):
+    for n in tqdm(range(2, max_K)):
         temp_sil = [None] * iterations # pre-allocate the list
         for x in range(iterations):
             gmm = GMM(n, n_init=n_init, init_params=init_params, covariance_type=covariance_type,
@@ -363,43 +366,38 @@ def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_pa
         print('GMM did not converge. Please check you input configuration.')
     
     results_real = Calculate_CVIs(embeddings, labels=labels_final, Random = False)
-    print(results_real)
-
     # create DataFrame from real results
     df_real = pd.DataFrame.from_dict(results_real, orient='columns')
-    print(df_real)
 
     results_random = Calculate_CVIs(embeddings, labels=None, num_clusters=K, Random = True)
-    print(results_random)
     # create DataFrame from random results
     df_random = pd.DataFrame.from_dict(results_random, orient='columns')
-    print(df_random)
 
     # concatenate DataFrames along columns axis
-    table_metrics = pd.concat([df_real, df_random], axis=1)
+    results_CVIs = pd.concat([df_real, df_random], axis=1)
 
     print(f'GMM clustering took {time.monotonic() - start_time:.3f} seconds')
 
     print('='*50)
     print("Validation metrics")
-    print(table_metrics)
+    print(results_CVIs)
 
     cluster_final = pd.DataFrame({'cluster': labels_final}, index=data.index)
-    data_clustered = data.join(cluster_final)
+    results_clustered = data.join(cluster_final)
 
-    if 'mol' in data_clustered.columns:  # Check if mol column from standardization is present
+    if 'mol' in results_clustered.columns:  # Check if mol column from standardization is present
         try:
-            data_clustered['SMILES_standardized'] = data_clustered['mol'].apply(
+            results_clustered['SMILES_standardized'] = results_clustered['mol'].apply(
                 lambda x: Chem.MolToSmiles(x))
-            data_clustered.drop(['mol'], axis=1, inplace=True)
+            results_clustered.drop(['mol'], axis=1, inplace=True)
         except Exception as e:
             print('Something went wrong converting standardized molecules back to SMILES code..: {e}')
             pass
 
-    data_clustered.to_csv(f'results_SOMoC_{name}/{name}_Clustered_SOMoC.csv', index=True, header=True)
-    table_metrics.to_csv(f'results_SOMoC_{name}/{name}_Validation_SOMoC.csv', index=True, header=True)
+    results_clustered.to_csv(f'results_SOMoC_{name}/{name}_Clustered_SOMoC.csv', index=True, header=True)
+    results_CVIs.to_csv(f'results_SOMoC_{name}/{name}_Validation_SOMoC.csv', index=True, header=True)
 
-    return data_clustered
+    return results_clustered, results_CVIs
 
 def Elbow_plot(results):
     """Draw the elbow plot of SIL score vs. K"""
@@ -462,36 +460,43 @@ def Distribution_plot(data_clustered):
 
     return
 
-def Setting_info():
-    """Create a dataframe with current run setting"""
-    today = date.today()
-    fecha = today.strftime("%d/%m/%Y")
-    settings = []
-    settings.append(["Date: ", fecha])
-    settings.append(["Setings:", ""])
-    settings.append(["", ""])
-    settings.append(["Fingerprint type:", "EState1"])
-    settings.append(["", ""])
-    settings.append(["UMAP", ""])
-    settings.append(["n_neighbors:", str(n_neighbors)])
-    settings.append(["min_dist:", str(min_dist)])
-    settings.append(["n_components:", str(n_components)])
-    settings.append(["random_state:", str(random_state)])
-    settings.append(["metric:", str(metric)])
-    settings.append(["", ""])
-    settings.append(["GMM", ""])
-    settings.append(["max Nº of clusters (K):", str(max_K)])
-    settings.append(["Optimal K:", str(K)])
-    settings.append(["iterations:", str(iterations)])
-    settings.append(["n_init:", str(n_init)])
-    settings.append(["init_params", str(init_params)])
-    settings.append(["covariance_type", str(covariance_type)])
-    settings.append(["", ""])
-    settings.append(["Total running time : ", total_time])
-    settings.append(["", ""])
-    settings_df = pd.DataFrame(settings)
-    settings_df.to_csv(f'results_SOMoC_{name}/{name}_Settings_SOMoC.csv', index=True, header=False)
-    return
+def Save_settings(results_CVIs: pd.DataFrame):
+    """
+    Create a dictionary with the current run settings, save it as a JSON file,
+    and return it.
+    """
+    # Create a dictionary with the settings
+    settings = {}
+    settings["timestamp"] = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    settings["fingerprint_type"] = "EState1"
+    settings["umap"] = {
+        "n_neighbors": n_neighbors,
+        "min_dist": min_dist,
+        "n_components": n_components,
+        "random_state": random_state,
+        "metric": metric
+    }
+    settings["gmm"] = {
+        "max_n_clusters": max_K,
+        "n_init": n_init,
+        "init_params": init_params,
+        "covariance_type": covariance_type
+    }
+    settings["optimal_K"] = K
+    settings["CVIs"] =  {
+        "silhouette": results_CVIs.loc['silhouette']['SOMoC'],
+        "calinski_harabasz": results_CVIs.loc['calinski_harabasz']['SOMoC'],
+        "davies_bouldin": results_CVIs.loc['davies_bouldin']['SOMoC'],
+        "dunn": results_CVIs.loc['dunn']['SOMoC']
+    }
+
+    # Save the settings as a JSON file
+    file_path = f"results_SOMoC_{name}/{name}_{settings['timestamp']}.json"
+
+    with open(file_path, "w") as json_file:
+        json.dump(settings, json_file, indent="\t")
+
+    return settings
 
 ####################################### SOMoC main ########################################
 ###########################################################################################
@@ -499,7 +504,7 @@ def Setting_info():
 
 if __name__ == '__main__':
 
-    start = time.time()
+    start_time = time.monotonic()
 
     print('-'*50)
 
@@ -527,22 +532,17 @@ if __name__ == '__main__':
         Elbow_plot(results)
 
     # Run the final clustering and calculate all CVIs
-    data_clustered = GMM_clustering_final(embedding, K=K, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
+    results_clustered, results_CVIs = GMM_clustering_final(embedding, K=K, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
 
     # Generate distribution plot and .CSV file
-    Distribution_plot(data_clustered)
+    Distribution_plot(results_clustered)
 
-    end = time.time()
-    hours, rem = divmod(end-start, 3600)
-    minutes, seconds = divmod(rem, 60)
-    total_time = "{:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds)
-
-    # Write the settings file
-    settings = Setting_info()
+    # Write the settings JSON file
+    Save_settings(results_CVIs)
 
     print('='*50)
     print('ALL DONE !')
-    print(f'SOMoC run took {total_time}')
+    print(f'SOMoC run took {time.monotonic() - start_time:.3f} seconds')
     print('='*50)
 
 
