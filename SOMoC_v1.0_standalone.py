@@ -15,7 +15,7 @@ import pandas as pd
 from array import array
 import time
 import os
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional, Dict, Any
 from datetime import date
 from pathlib import Path
 import numpy as np
@@ -23,12 +23,16 @@ import json
 import logging
 from tqdm import tqdm
 from datetime import datetime
+import seaborn as sns
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 import plotly.express as plx
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sklearn.mixture import GaussianMixture as GMM
-from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score, pairwise_distances
+from sklearn.metrics import silhouette_score, silhouette_samples, calinski_harabasz_score, davies_bouldin_score, pairwise_distances
 from validclust import dunn
 import umap
 from rdkit import Chem
@@ -55,14 +59,15 @@ n_neighbors = 10    # The size of local neighborhood used for manifold approxima
 min_dist = 0.0      # The effective minimum distance between embedded points. Smaller values will result in a more clustered/clumped embedding where nearby points on the manifold are drawn closer together, while larger values will result on a more even dispersal of points.
 random_state = 10   # Use a fixed seed for reproducibility.
 metric = "jaccard"  # The metric to use to compute distances in high dimensional space.
+init = 'pca'
 
 ### GMM parameters ###
-max_K = 25                      # Max number of clusters to cosidering during the GMM loop
+max_K = 3                      # Max number of clusters to cosidering during the GMM loop
 Kers = np.arange(2, max_K+1, 1) # Generate the range of K values to explore
-iterations = 10                  # Iterations of GMM to run for each K
-n_init = 5                      # Number of initializations on each GMM run, then just keep the best one.
+iterations = 2                  # Iterations of GMM to run for each K
+n_init = 2                      # Number of initializations on each GMM run, then just keep the best one.
 init_params = 'kmeans'          # How to initialize. Can be random or K-means
-covariance_type = 'full'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
+covariance_type = 'diag'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
 warm_start = False
 
 #################################### Helper functions #####################################
@@ -174,7 +179,7 @@ def Fingerprints_calculator(data: pd.DataFrame) -> np.ndarray:
     return fingerprints
 
 def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
-                   metric: str = 'jaccard', random_state: int = 42) -> Tuple[np.ndarray, int]:
+                   init: str = 'spectral', metric: str = 'jaccard', random_state: int = 42) -> Tuple[np.ndarray, int]:
 
     """
     Reduce feature space using the UMAP algorithm.
@@ -210,7 +215,7 @@ def UMAP_reduction(X: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1,
     logging.info(f'Running UMAP with {n_components} components and {n_neighbors} neighbors.')
 
     reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=n_components, metric=metric,
-                        random_state=random_state).fit(X)
+                        init=init, random_state=random_state).fit(X)
     embedding = reducer.transform(X)
 
     return embedding, n_components
@@ -368,7 +373,7 @@ def GMM_clustering_final(embeddings: np.array, K: int=3, n_init: int=10, init_pa
     results_clustered.to_csv(f'results/{name}/{name}_Clustered_SOMoC.csv', index=True, header=True)
     results_CVIs.to_csv(f'results/{name}/{name}_Validation_SOMoC.csv', index=True, header=True)
 
-    return results_clustered, results_CVIs
+    return results_clustered, results_CVIs, GMM_final
 
 def Elbow_plot(results):
     """Draw the elbow plot of SIL score vs. K"""
@@ -397,33 +402,65 @@ def Elbow_plot(results):
 
     fig.write_html(f'results/{name}/{name}_elbowplot_SOMoC.html')
 
-def Distribution_plot(data_clustered):
-    """Plot the clusters size distribution"""
-    sizes = data_clustered["cluster"].value_counts().to_frame()
-    sizes.index.names = ['Cluster']
-    sizes.columns = ['Size']
-    sizes.reset_index(drop=False, inplace=True)
-    sizes = sizes.astype({'Cluster': str, 'Size': int})
 
-    fig = plx.bar(sizes, x=sizes.Cluster, y=sizes.Size, color=sizes.Cluster)
+def Distribution_plot(model, embedding):
+    """Plot individual SIL scores each sample, agregated by cluster """
+    
+    labels_final = model.predict(embedding)
+    sil_bysample = silhouette_samples(embedding, labels_final, metric='cosine')
+    sil_svg = round(float(silhouette_score(embedding, labels_final, metric='cosine')),3)
+    
+    y_lower = 10
+    y_tick_pos_ = []
 
-    fig.update_layout(legend_title="Cluster", plot_bgcolor='rgb(256,256,256)',
-                      legend_title_font = dict(size=18, family='Calibri', color='black'),
-                      legend_font = dict(size=15, family='Calibri', color='black'))
-    fig.update_xaxes(title_text='Cluster', showline=True, linecolor='black',
-                     gridcolor='lightgrey', zerolinecolor='lightgrey',
-                     tickfont=dict(family='Arial', size=16, color='black'),
-                     title_font=dict(size=20, family='Calibri', color='black'))
-    fig.update_yaxes(title_text='Size', showline=True, linecolor='black',
-                     gridcolor='lightgrey', zerolinecolor='lightgrey',
-                     tickfont=dict(family='Arial', size=16, color='black'),
-                     title_font=dict(size=20, family='Calibri', color='black'))
+    fig, (ax) = plt.subplots(1)
+    fig.set_size_inches(8, 12)
 
-    fig.write_html(f'results/{name}/{name}_size_distribution_SOMoC.html')
+    for i in range(model.n_components):
+        # Aggregate the silhouette scores for samples belonging to cluster i, and sort them
+        ith_cluster_SILs = sil_bysample[labels_final == i]
+        ith_cluster_SILs.sort()
 
-    sizes.to_csv(f'results/{name}/{name}_Size_distribution_SOMoC.csv', index=True, header=True)  # Write the .CSV file
+        size_cluster_i = ith_cluster_SILs.shape[0]
 
-    return
+        y_upper = y_lower + size_cluster_i
+
+        color = cm.nipy_spectral(float(i) / model.n_components)
+        # color = sns.color_palette("rocket", n_colors=model.n_components)#, as_cmap=True)
+
+        ax.fill_betweenx(
+            np.arange(y_lower, y_upper),
+            0,
+            ith_cluster_SILs,
+            facecolor=color,
+            edgecolor=color,
+            alpha=0.7,
+        )
+
+        y_tick_pos_.append(y_lower + 0.5 * size_cluster_i)
+
+        # Compute the new y_lower for next plot
+        y_lower = y_upper + 10  # 10 for the 0 samples
+
+    # ax.axvline(x=sil_svg, color="red", linestyle="--", label=f"Avg SIL score: {sil_svg}")
+    ax.axvline(x=sil_svg, color="red", linestyle="--")
+
+    ax.set_title(f"Silhouette Plot for {model.n_components} clusters", fontsize=20)
+
+    l_xlim = max(-1, min(-0.1, round(min(sil_bysample) - 0.1, 1)))
+    u_xlim = min(1, round(max(sil_bysample) + 0.1, 1))
+    ax.set_xlim([l_xlim, u_xlim])
+    ax.set_ylim([0, embedding.shape[0] + (model.n_components + 1) * 10])
+    ax.set_xlabel("Silhouette coefficient values", fontsize=20)
+    ax.set_ylabel("Cluster label", fontsize=20)
+    ax.set_yticks(y_tick_pos_)
+    ax.set_yticklabels([str(i) for i in range(model.n_components)]) #,fontdict={'fontsize':15}
+    # change the fontsize
+    ax.tick_params(axis='both', labelsize=15)   
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
+    # ax.legend(loc="best")
+    plt.tight_layout()
+    plt.savefig(f'results/{name}/SIL_bycluster_SOMoC.png')
 
 def Save_settings(results_CVIs: pd.DataFrame):
     """
@@ -440,14 +477,17 @@ def Save_settings(results_CVIs: pd.DataFrame):
         "min_dist": min_dist,
         "n_components": n_components,
         "random_state": random_state,
-        "metric": metric
+        "metric": metric,
+        "init":init
     }
     settings["gmm"] = {
         "max_n_clusters": max_K,
         "n_init": n_init,
         "iterations": iterations,
         "init_params": init_params,
-        "covariance_type": covariance_type
+        "covariance_type": covariance_type,
+        "warm_start" : False
+
     }
     settings["optimal_K"] = K
     settings["CVIs"] =  {
@@ -467,14 +507,12 @@ def Save_settings(results_CVIs: pd.DataFrame):
 
 ####################################### SOMoC main ########################################
 ###########################################################################################
-
 if __name__ == '__main__':
 
     logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        # logging.filemode('w'),
         logging.FileHandler("SOMoC.log", mode='w'),
         logging.StreamHandler()
     ]
@@ -510,12 +548,12 @@ if __name__ == '__main__':
         results_loop, K = GMM_clustering_loop(embedding, max_K=max_K, iterations=iterations, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
     
     # Run the final clustering and calculate all CVIs
-    results_clustered, results_CVIs = GMM_clustering_final(embedding, K=K, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
+    results_clustered, results_CVIs, results_model = GMM_clustering_final(embedding, K=K, n_init=n_init, init_params=init_params, covariance_type=covariance_type, warm_start=warm_start)
    
     print('='*100)
     logging.info('Generating plots.')
     Elbow_plot(results_loop)
-    Distribution_plot(results_clustered)
+    Distribution_plot(results_model, embedding)
 
     logging.info('Saving run settings to JSON file.')
     Save_settings(results_CVIs)    # Write the settings JSON file
@@ -527,9 +565,6 @@ if __name__ == '__main__':
     print("CVIs results")
     print(results_CVIs)
     print('='*100)
-
-
-
     
 
 
