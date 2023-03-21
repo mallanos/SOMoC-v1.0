@@ -127,6 +127,29 @@ class Settings:
         for k, v in settings_dict.items():
             setattr(self, k, v)
 
+    def save_settings(self, name: str, df: pd.DataFrame = None) -> None:
+
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        # Create a dictionary with the settings
+        settings_dict = {}
+        settings_dict["timestamp"] = timestamp
+
+        for k, v in self.__dict__.items():
+            if not k.startswith('__'):
+                settings_dict[k] = v
+
+        # Add the DataFrame to the dictionary if it is provided
+        if df is not None:
+            df = df.iloc[:,:1]
+            df.columns = ['CVIs']
+            for k, v in df.to_dict().items():
+                settings_dict[k] = v
+
+        # Write the dictionary to a JSON file
+        with open(f'results/{name}/{name}_{timestamp}.json', 'w') as f:
+            json.dump(settings_dict, f, indent=4)
+
 def Get_name(archive):
     """strip path and extension to return the name of a file"""
     # name = os.path.splitext(os.path.basename(archive))[0]
@@ -628,8 +651,10 @@ if __name__ == '__main__':
     # Elbow_plot(results_loop)
     Distribution_plot(results_model, embedding)
 
-    # logging.info('Saving run settings to JSON file.')
+    logging.info('Saving run settings to JSON file.')
     # Save_settings(results_CVIs)    # Write the settings JSON file
+    settings.optimal_K = optimal_K
+    settings.save_settings(name, df=results_CVIs)
 
     logging.info('ALL DONE !')
     logging.info(f'SOMoC run took {time.monotonic() - start_time:.3f} seconds')
