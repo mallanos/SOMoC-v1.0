@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-@author: LIDeB UNLP
+@author: Manu Llanos
 """
 # SOMoC is a clustering methodology based on the combination of molecular fingerprinting, 
 # dimensionality reduction by the Uniform Manifold Approximation and Projection (UMAP) algorithm 
@@ -27,6 +27,7 @@ import seaborn as sns
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import argparse
 
 import plotly.express as plx
 import plotly.graph_objects as go
@@ -38,37 +39,6 @@ import umap
 from rdkit import Chem
 from rdkit.Chem.EState.Fingerprinter import FingerprintMol
 from molvs import Standardizer
-
-###################################### CONFIGURATION ######################################
-###########################################################################################
-
-# Input file is a .CSV file with one molecule per line in SMILES format.
-# Molecules must be in the first column.
-input_file = None
-
-# If you already know the number of clusters in your data, then set K to this value.
-# Otherwise, set K=None to let SOMoC approaximate it by running a range of K values.
-# Alternatively, you can use the generated elbowplot to find K yourself and re-reun SOMoC with a fixed K.
-# K = None            # Optimal number of clusters K
-
-# Perform molecule standardization using the MolVS package
-# smiles_standardization = False       
-
-### UMAP parameters ###
-# n_neighbors = 10    # The size of local neighborhood used for manifold approximation. Larger values result in more global views of the manifold, while smaller values result in more local data being preserved.
-# min_dist = 0.0      # The effective minimum distance between embedded points. Smaller values will result in a more clustered/clumped embedding where nearby points on the manifold are drawn closer together, while larger values will result on a more even dispersal of points.
-# random_state = 10   # Use a fixed seed for reproducibility.
-# metric = "jaccard"  # The metric to use to compute distances in high dimensional space.
-# init = 'pca'
-
-### GMM parameters ###
-# max_K = 3                       # Max number of clusters to cosidering during the GMM loop
-# Kers = np.arange(2, max_K+1, 1) # Generate the range of K values to explore
-# iterations = 2                  # Iterations of GMM to run for each K
-# n_init = 2                      # Number of initializations on each GMM run, then just keep the best one.
-# init_params = 'kmeans'          # How to initialize. Can be random or K-means
-# covariance_type = 'diag'        # Type of covariance to consider: "spherical", "diag", "tied", "full"
-# warm_start = False
 
 #################################### Helper functions #####################################
 ###########################################################################################
@@ -555,69 +525,34 @@ def Distribution_plot(model, embedding):
     plt.tight_layout()
     plt.savefig(f'results/{name}/SIL_bycluster_SOMoC.png')
 
-# def Save_settings(results_CVIs: pd.DataFrame):
-#     """
-#     Create a dictionary with the current run settings, save it as a JSON file,
-#     and return it.
-#     """
-    
-#     # Create a dictionary with the settings
-#     settings = {}
-#     settings["timestamp"] = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-#     settings["fingerprint_type"] = "EState1"
-#     settings["umap"] = {
-#         "n_neighbors": n_neighbors,
-#         "min_dist": min_dist,
-#         "n_components": n_components,
-#         "random_state": random_state,
-#         "metric": metric,
-#         "init":init
-#     }
-#     settings["gmm"] = {
-#         "max_n_clusters": max_K,
-#         "n_init": n_init,
-#         "iterations": iterations,
-#         "init_params": init_params,
-#         "covariance_type": covariance_type,
-#         "warm_start" : False
-
-#     }
-#     settings["optimal_K"] = K
-#     settings["CVIs"] =  {
-#         "silhouette": results_CVIs.loc['silhouette']['SOMoC'],
-#         "calinski_harabasz": results_CVIs.loc['calinski_harabasz']['SOMoC'],
-#         "davies_bouldin": results_CVIs.loc['davies_bouldin']['SOMoC'],
-#         "dunn": results_CVIs.loc['dunn']['SOMoC']
-#     }
-
-#     # Save the settings as a JSON file
-#     file_path = f"results/{name}/{name}_{settings['timestamp']}.json"
-
-#     with open(file_path, "w") as json_file:
-#         json.dump(settings, json_file, indent="\t")
-
-#     return settings
-
 ####################################### SOMoC main ########################################
 ###########################################################################################
 if __name__ == '__main__':
 
+    parser = argparse.ArgumentParser(prog='SOMoC', description='SOMoC is a clustering methodology based on the combination of molecular fingerprinting, dimensionality reduction by the Uniform Manifold Approximation and Projection (UMAP) algorithm and clustering with the Gaussian Mixture Model (GMM) algorithm.')
+    parser.add_argument('-c','--config', help='Path to JSON config file', required=True)
+    parser.add_argument('-i','--input', help='Input file is a .CSV file with one molecule per line in SMILES format. Molecules must be in the first column.', required=False)
+    parser.add_argument('-l','--log-level', help='Choose the logging level to show', choices=['debug', 'info', 'warning', 'error', 'critical'], default='info', required=False)
+
+    args = parser.parse_args()
+
     logging.basicConfig(
-    level=logging.INFO,
+    level=args.log_level.upper(),
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler("SOMoC.log", mode='w'),
+        logging.FileHandler(f"results/SOMoC.log", mode='w'),
         logging.StreamHandler()
     ]
 )
     start_time = time.monotonic()
 
-    settings = Settings('config.json')
+
+    settings = Settings(args.config)
 
     print('='*100)
 
     # Get input data
-    data_raw, name = Get_input_data(input_file)
+    data_raw, name = Get_input_data(args.input)
     
     # Create output dir
     Make_dir(f'results/{name}')
@@ -645,15 +580,15 @@ if __name__ == '__main__':
         # If optimal_K is not set, run the GMM clustering loop to get K
         results_loop, optimal_K = GMM_clustering_loop(embedding, settings)
         results_clustered, results_CVIs, results_model = GMM_clustering_final(embedding, settings, K=optimal_K)
-
+        settings.optimal_K = optimal_K
+        
     print('='*100)
     logging.info('Generating plots.')
     # Elbow_plot(results_loop)
     Distribution_plot(results_model, embedding)
 
     logging.info('Saving run settings to JSON file.')
-    # Save_settings(results_CVIs)    # Write the settings JSON file
-    settings.optimal_K = optimal_K
+    # Write the settings JSON file
     settings.save_settings(name, df=results_CVIs)
 
     logging.info('ALL DONE !')

@@ -1,28 +1,29 @@
 {
-	"timestamp": "2023-03-18_16-06-00",
+    "timestamp": "2023-03-20_21-02-27",
+    "fingerprint_type": "EState1",
     "standardize_molec": true,
-	"fingerprint_type": "EState1",
-	"umap": {
-		"n_neighbors": 10,
-		"min_dist": 0.0,
-		"n_components": 5,
-		"metric": "jaccard",
-		"init": "spectral"
-	},
-	"gmm": {
-		"max_n_clusters": 3,
-		"n_init": 2,
-		"iterations": 2,
-		"init_params": "kmeans",
-		"covariance_type": "diag"
-	},
-	"random_state": 10,
-    "max_K":5,
-	"optimal_K": false,
-	"CVIs": {
-		"silhouette": 0.8652999997138977,
-		"calinski_harabasz": 3039.431,
-		"davies_bouldin": 0.1566,
-		"dunn": 1.4966000318527222
-	}
+    "umap": {
+        "n_neighbors": 10,
+        "min_dist": 0.0,
+        "n_components": 5,
+        "metric": "jaccard",
+        "init": "spectral"
+    },
+    "gmm": {
+        "max_n_clusters": 3,
+        "n_init": 2,
+        "iterations": 2,
+        "init_params": "kmeans",
+        "covariance_type": "diag",
+        "warm_start": false
+    },
+    "random_state": 10,
+    "max_K": 5,
+    "optimal_K": false,
+    "CVIs": {
+        "calinski_harabasz": 5450.319,
+        "davies_bouldin": 0.3108,
+        "dunn": 0.888700008392334,
+        "silhouette": 0.9391000270843506
+    }
 }
