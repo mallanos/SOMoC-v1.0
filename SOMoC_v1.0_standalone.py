@@ -29,9 +29,6 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import argparse
 
-import plotly.express as plx
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from sklearn.mixture import GaussianMixture as GMM
 from sklearn.metrics import silhouette_score, silhouette_samples, calinski_harabasz_score, davies_bouldin_score, pairwise_distances
 from validclust import dunn
@@ -358,9 +355,9 @@ def GMM_clustering_loop(embeddings: np.ndarray, settings) -> Tuple[pd.DataFrame,
 
     logging.info("SOMoC will try to find the optimal K")
 
-    temp = {i: [] for i in range(max_K)}  # pre-allocate the dictionary
+    temp = {i: [] for i in range(max_K+1)}  # pre-allocate the dictionary
 
-    for n in tqdm(range(2, max_K), desc='Optimizing the number of cluters'):
+    for n in tqdm(range(2, max_K+1), desc='Optimizing the number of cluters'):
         temp_sil = [None] * iterations # pre-allocate the list
         for x in range(iterations):
             gmm = GMM(n, n_init=n_init, init_params=init_params, covariance_type=covariance_type,
@@ -368,10 +365,11 @@ def GMM_clustering_loop(embeddings: np.ndarray, settings) -> Tuple[pd.DataFrame,
             labels = gmm.predict(embeddings)
             temp_sil[x] = silhouette_score(
                 embeddings, labels, metric='cosine')
-        temp[n] = [n,np.mean(temp_sil), np.std(temp_sil)]
+        temp[n] = [int(n),np.mean(temp_sil), np.std(temp_sil)]
 
     results = pd.DataFrame.from_dict(
-        temp, orient='index', columns=['Clusters','Silhouette', 'sil_stdv'])
+        temp, orient='index', columns=['Clusters','Silhouette', 'sil_stdv']).dropna()
+    results = results.astype({"Clusters": int})
     results_sorted = results.sort_values(['Silhouette'], ascending=False)
     K_loop = results_sorted.index[0]  # Get max Sil K
     
@@ -433,38 +431,40 @@ def GMM_clustering_final(embeddings: np.array, settings, K: int= 3):
             logging.warning('Something went wrong converting standardized molecules back to SMILES code..: {e}')
             pass
 
-    results_clustered.to_csv(f'results/{name}/{name}_Clustered_SOMoC.csv', index=True, header=True)
-    results_CVIs.to_csv(f'results/{name}/{name}_Validation_SOMoC.csv', index=True, header=True)
+    results_clustered.to_csv(f'results/{name}/{name}_Clustered.csv', index=True, header=True)
+    results_CVIs.to_csv(f'results/{name}/{name}_CVIs.csv', index=True, header=True)
 
     return results_clustered, results_CVIs, GMM_final
 
-def Elbow_plot(results):
-    """Draw the elbow plot of SIL score vs. K"""
+def Elbow_plot(name, results_loop, optimal_K):
+    """Draw the elbow plot of SIL score vs. K.
 
-    fig = make_subplots(specs=[[{"secondary_y": False}]])
+    Parameters:
+    name (str): The name of the dataset or experiment.
+    results_loop (pd.DataFrame): A DataFrame containing the Silhouette score and standard deviation for each number of clusters tested.
+    optimal_K (int): The optimal number of clusters selected.
+    """
+    optimal_score = results_loop.loc[results_loop['Clusters'] == optimal_K, 'Silhouette'].values[0]
+    optimal_stdv = results_loop.loc[results_loop['Clusters'] == optimal_K, 'sil_stdv'].values[0]
+    optimal_label = f'Optimal K={optimal_K}\nSilhouette={optimal_score:.3f}±{optimal_stdv:.3f}'
+    
+    fig, ax1 = plt.subplots(figsize=(14, 6))
 
-    fig.add_trace(go.Scatter(x=results['Clusters'], y=results['Silhouette'],
-                             mode='lines+markers', name='Silhouette',
-                             error_y=dict(type='data', symmetric=True, array=results["sil_stdv"]),
-                             hovertemplate="Clusters = %{x}<br>Silhouette = %{y}"),
-                  secondary_y=False)
+    sil = sns.lineplot(data=results_loop, x='Clusters', y="Silhouette", color='b', ci=None, estimator=np.median,
+                       ax=ax1)
+    
+    sil_error = ax1.errorbar(x=results_loop['Clusters'], y=results_loop['Silhouette'], yerr=results_loop['sil_stdv'],
+                             fmt='none', ecolor='b', capsize=4, elinewidth=1.5)
+    
+    plt.axvline(x=optimal_K, color='r', linestyle='--', label=optimal_label, linewidth=1.5)
 
-    fig.update_layout(title="Silhouette vs. K", title_x=0.5,
-                      title_font=dict(size=28, family='Calibri', color='black'),
-                      legend_title_text = "Metric",
-                      legend_title_font = dict(size=18, family='Calibri', color='black'),
-                      legend_font = dict(size=15, family='Calibri', color='black'))
-    fig.update_xaxes(title_text='Number of clusters (K)', range=[2 - 0.5, max_K + 0.5],
-                     tickfont=dict(family='Arial', size=16, color='black'),
-                     title_font=dict(size=25, family='Calibri', color='black'))
-    fig.update_yaxes(title_text='Silhouette score',
-                     tickfont=dict(family='Arial', size=16, color='black'),
-                     title_font=dict(size=25, family='Calibri', color='black'), secondary_y=False)
-
-    fig.update_layout(margin=dict(t=60, r=20, b=20, l=20), autosize=True)
-
-    fig.write_html(f'results/{name}/{name}_elbowplot_SOMoC.html')
-
+    plt.legend(fancybox=True, framealpha=0.5, fontsize='15', loc='best', title_fontsize='30')
+    plt.tick_params(labelsize=12)
+    plt.title(f"Elbow plot - Sil vs. K", fontsize=20)
+    plt.xlabel("Number of clusters (K)", fontsize=15)
+    plt.ylabel("Silhouette", fontsize=15)
+    plt.tight_layout()
+    plt.savefig(f'results/{name}/{name}_Elbowplot.png')
 
 def Distribution_plot(model, embedding):
     """Plot individual SIL scores each sample, agregated by cluster """
@@ -523,7 +523,7 @@ def Distribution_plot(model, embedding):
     ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
     # ax.legend(loc="best")
     plt.tight_layout()
-    plt.savefig(f'results/{name}/SIL_bycluster_SOMoC.png')
+    plt.savefig(f'results/{name}/SIL_bycluster.png')
 
 ####################################### SOMoC main ########################################
 ###########################################################################################
@@ -540,12 +540,11 @@ if __name__ == '__main__':
     level=args.log_level.upper(),
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(f"results/SOMoC.log", mode='w'),
+        logging.FileHandler(f"SOMoC.log", mode='w'),
         logging.StreamHandler()
     ]
 )
     start_time = time.monotonic()
-
 
     settings = Settings(args.config)
 
@@ -581,10 +580,10 @@ if __name__ == '__main__':
         results_loop, optimal_K = GMM_clustering_loop(embedding, settings)
         results_clustered, results_CVIs, results_model = GMM_clustering_final(embedding, settings, K=optimal_K)
         settings.optimal_K = optimal_K
-        
+        Elbow_plot(name, results_loop, optimal_K)
+       
     print('='*100)
     logging.info('Generating plots.')
-    # Elbow_plot(results_loop)
     Distribution_plot(results_model, embedding)
 
     logging.info('Saving run settings to JSON file.')

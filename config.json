@@ -10,15 +10,15 @@
         "init": "spectral"
     },
     "gmm": {
-        "max_n_clusters": 3,
-        "n_init": 2,
-        "iterations": 2,
+        "max_n_clusters": 10,
+        "n_init": 10,
+        "iterations": 5,
         "init_params": "kmeans",
         "covariance_type": "diag",
         "warm_start": false
     },
     "random_state": 10,
-    "max_K": 5,
+    "max_K": 10,
     "optimal_K": false,
     "CVIs": {
         "calinski_harabasz": 5450.319,
