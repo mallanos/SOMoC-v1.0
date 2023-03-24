@@ -15,48 +15,13 @@ from tqdm import tqdm
 import argparse
 
 import umap
-from rdkit import Chem
-from rdkit.Chem.EState.Fingerprinter import FingerprintMol
+# from rdkit import Chem
+# from rdkit.Chem.EState.Fingerprinter import FingerprintMol
 
 from modules.data import *
 from modules.plotting import *
 from modules.clustering import *
-
-def Fingerprints_calculator(data: pd.DataFrame) -> np.ndarray:
-    """
-    Calculate EState molecular fingerprints using the RDKit package.
-
-    Parameters:
-        data (pd.DataFrame): A pandas DataFrame containing a FIRST column of SMILES strings.
-
-    Returns:
-        np.ndarray: The calculated EState molecular fingerprints as a NumPy array.
-
-    Raises:
-        ValueError: If the input DataFrame does not contain a column of SMILES strings.
-        RuntimeError: If there is a problem with fingerprint calculation of some SMILES.
-    """
-
-    if 'smiles' in data.columns:
-        smiles_list = data['smiles']
-    else:
-        smiles_list = data.iloc[:,0]
-    
-    logging.info("ENCODING")
-    logging.info("Calculating EState molecular fingerprints...")
-
-    mols = [Chem.MolFromSmiles(smiles) for smiles in smiles_list]
-    fps = [None] * len(mols)
-    for i, mol in tqdm(enumerate(mols), total=len(mols), desc='Calculating fingerprints'):
-        try:
-            fp = FingerprintMol(mol)[0]  # EState fingerprint
-            fps[i] = fp
-        except Exception as e:
-            logging.warning(f"Failed fingerprint calculation for molecule {i+1}: ({e})")
-
-    fingerprints = np.stack(fps, axis=0)
-
-    return fingerprints
+from modules.encoding import *
 
 def UMAP_reduction(X: np.ndarray, settings) -> Tuple[np.ndarray, int]:
 
@@ -142,8 +107,9 @@ if __name__ == '__main__':
     # Convert SMILES to RDKit molecule
     data = data_handler.smiles_to_mol(data=data_raw, standardize=settings.standardize_molec)
     
+    encoder = Encoding(data)
     # Calculate Fingerprints
-    X = Fingerprints_calculator(data) 
+    X = encoder.fingerprints_calculator() 
 
     # Reduce feature space with UMAP
     embedding, n_components = UMAP_reduction(X, settings)
