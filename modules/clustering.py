@@ -92,12 +92,12 @@ class Clustering():
         Returns:
         Tuple[pd.DataFrame, int]: A tuple of the results dataframe and the K value which maximizes the silhouette score.
         """
-        max_n_clusters = self.settings.gmm['max_n_clusters']
-        iterations = self.settings.gmm['iterations']
-        n_init = self.settings.gmm['n_init']
-        init_params = self.settings.gmm['init_params']
-        covariance_type = self.settings.gmm['covariance_type']
-        warm_start = self.settings.gmm['warm_start']
+        max_n_clusters = self.settings.clustering['max_n_clusters']
+        iterations = self.settings.clustering['iterations']
+        n_init = self.settings.clustering['n_init']
+        init_params = self.settings.clustering['init_params']
+        covariance_type = self.settings.clustering['covariance_type']
+        warm_start = self.settings.clustering['warm_start']
 
         logging.info("SOMoC will try to find the optimal K")
 
@@ -137,10 +137,10 @@ class Clustering():
         Returns:
             data_clustered (pandas.DataFrame): The input data with an additional 'cluster' column.
         """
-        n_init = self.settings.gmm['n_init']
-        init_params = self.settings.gmm['init_params']
-        covariance_type = self.settings.gmm['covariance_type']
-        warm_start = self.settings.gmm['warm_start']
+        n_init = self.settings.clustering['n_init']
+        init_params = self.settings.clustering['init_params']
+        covariance_type = self.settings.clustering['covariance_type']
+        warm_start = self.settings.clustering['warm_start']
         random_state = self.settings.random_state
 
         logging.info(f'Running final clustering with K = {K}')

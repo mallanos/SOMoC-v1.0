@@ -1,44 +1,58 @@
-
 import pandas as pd
 import numpy as np
-import logging
 from tqdm import tqdm
+import logging
 
-from rdkit import Chem
+from rdkit.Chem import AllChem, MolFromSmiles, MACCSkeys
 from rdkit.Chem.EState.Fingerprinter import FingerprintMol
 
 class Encoding():
-    def __init__(self, data: pd.DataFrame) -> None:
+    def __init__(self, data: pd.DataFrame, settings) -> None:
         self.data = data
+        if 'smiles' in self.data.columns:
+            self.smiles_list = self.data['smiles']
+        else:
+            self.smiles_list = self.data.iloc[:,0]
+        self.fingerprints = None
+        self.settings = settings
 
     def fingerprints_calculator(self) -> np.ndarray:
         """
-        Calculate EState molecular fingerprints using the RDKit package.
+        Calculate molecular fingerprints using the RDKit package.
 
         Parameters:
-            data (pd.DataFrame): A pandas DataFrame containing a FIRST column of SMILES strings.
+            fingerprint_type (str): The type of fingerprint to calculate. Must be 'estate', 'morgan' or 'maccs'.
+            radius (int): The radius of the Morgan fingerprint. Default is 2.
+            nbits (int): The number of bits in the Morgan fingerprint. Default is 2048.
 
         Returns:
-            np.ndarray: The calculated EState molecular fingerprints as a NumPy array.
+            np.ndarray: The calculated molecular fingerprints as a NumPy array.
 
         Raises:
-            ValueError: If the input DataFrame does not contain a column of SMILES strings.
+            ValueError: If the input fingerprint type is not 'estate', 'morgan' or 'maccs'.
             RuntimeError: If there is a problem with fingerprint calculation of some SMILES.
         """
+        fingerprint_type = self.settings.encoding['fingerprint_type']
+        radius = self.settings.encoding['radius']
+        nbits = self.settings.encoding['nbits']
 
-        if 'smiles' in self.data.columns:
-            smiles_list = self.data['smiles']
-        else:
-            smiles_list = self.data.iloc[:,0]
-        
+        if fingerprint_type not in ['estate', 'morgan', 'maccs']:
+            raise ValueError("Invalid fingerprint type. Must be 'estate','morgan or 'maccs'.")
+
         logging.info("ENCODING")
-        logging.info("Calculating EState molecular fingerprints...")
+        logging.info(f"Calculating {fingerprint_type} molecular fingerprints with radius={radius} and nbits={nbits}...")
 
-        mols = [Chem.MolFromSmiles(smiles) for smiles in smiles_list]
+        mols = [MolFromSmiles(smiles) for smiles in self.smiles_list]
         fps = [None] * len(mols)
-        for i, mol in tqdm(enumerate(mols), total=len(mols), desc='Calculating fingerprints'):
+        for i, mol in tqdm(enumerate(mols), total=len(mols), desc=f'Calculating {fingerprint_type.upper()} fingerprints'):
             try:
-                fp = FingerprintMol(mol)[0]  # EState fingerprint
+                if fingerprint_type == 'estate':
+                    fp = FingerprintMol(mol)[0]  # EState fingerprint
+                    # fp = AllChem.GetMorganFingerprint(mol, radius, useFeatures=True, nBits=nbits)  # EState fingerprint
+                elif fingerprint_type == 'morgan':
+                    fp = AllChem.GetMorganFingerprintAsBitVect(mol, radius, useFeatures=False, nBits=nbits)  # Morgan fingerprint
+                elif fingerprint_type == 'maccs':
+                    fp = MACCSkeys.GenMACCSKeys(mol)  # MACCS fingerprints
                 fps[i] = fp
             except Exception as e:
                 logging.warning(f"Failed fingerprint calculation for molecule {i+1}: ({e})")

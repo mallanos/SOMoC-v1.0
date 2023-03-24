@@ -51,25 +51,31 @@ class Settings:
 
         # Set default values for the settings
         defaults: Dict[str, Any] = {
-            'fingerprint_type': 'EState',
-            'standardize_molec': False,
-            'umap': {
-                'n_neighbors': 15,
-                'min_dist': 0.1,
-                'n_components': 2,
-                'metric': 'euclidean',
-                'init': 'spectral'
+            "random_state": 10,
+            "standardize_molec": False,
+            "optimal_K": False,
+            "encoding": {
+                "fingerprint_type": "estate",
+                "radius": 2,
+                "nbits": 2048
             },
-            'gmm': {
-                'max_n_clusters': 10,
-                'n_init': 10,
-                'iterations': 10,
-                'init_params': 'kmeans',
-                'covariance_type': 'full',
-                'warm_start' : False
+            "reducing": {
+                "reducer":"umap",
+                "n_neighbors": 10,
+                "min_dist": 0.0,
+                "n_components": 5,
+                "metric": "jaccard",
+                "init": "spectral"
             },
-            'random_state': 10,
-            'optimal_K': False
+            "clustering": {
+                "cluster":"gmm",
+                "max_n_clusters": 10,
+                "n_init": 10,
+                "iterations": 10,
+                "init_params": "kmeans",
+                "covariance_type": "diag",
+                "warm_start": False
+            }
         }
 
         # Update the defaults with any values from the config file

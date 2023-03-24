@@ -42,10 +42,10 @@ def UMAP_reduction(X: np.ndarray, settings) -> Tuple[np.ndarray, int]:
     Raises:
         ValueError: If the input is not a NumPy array or the number of neighbors is greater than the length of the input data.
     """
-    n_neighbors = settings.umap['n_neighbors']
-    min_dist = settings.umap['min_dist']
-    init = settings.umap['init']
-    metric = settings.umap['metric']
+    n_neighbors = settings.reducing['n_neighbors']
+    min_dist = settings.reducing['min_dist']
+    init = settings.reducing['init']
+    metric = settings.reducing['metric']
     random_state = settings.random_state
 
     logging.info('REDUCING')
@@ -107,7 +107,8 @@ if __name__ == '__main__':
     # Convert SMILES to RDKit molecule
     data = data_handler.smiles_to_mol(data=data_raw, standardize=settings.standardize_molec)
     
-    encoder = Encoding(data)
+    encoder = Encoding(data, settings)
+
     # Calculate Fingerprints
     X = encoder.fingerprints_calculator() 
 
