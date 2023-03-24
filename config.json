@@ -1,7 +1,7 @@
 {
     "timestamp": "2023-03-20_21-02-27",
     "fingerprint_type": "EState1",
-    "standardize_molec": true,
+    "standardize_molec": false,
     "umap": {
         "n_neighbors": 10,
         "min_dist": 0.0,
@@ -18,7 +18,6 @@
         "warm_start": false
     },
     "random_state": 10,
-    "max_K": 10,
     "optimal_K": false,
     "CVIs": {
         "calinski_harabasz": 5450.319,

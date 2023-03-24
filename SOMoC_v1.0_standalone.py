@@ -3,14 +3,9 @@
 """
 @author: Manu Llanos
 """
-# SOMoC is a clustering methodology based on the combination of molecular fingerprinting, 
-# dimensionality reduction by the Uniform Manifold Approximation and Projection (UMAP) algorithm 
-# and clustering with the Gaussian Mixture Model (GMM) algorithm.
-
 ##################################### Import packages ####################################
 ###########################################################################################
-# The following packages are required: SKlearn, RDKit, UMAP, Molvs, validclust and Plotly.
-# Please, meake sure you have them installed before running the program.
+
 import pandas as pd
 from array import array
 import time
@@ -37,113 +32,9 @@ from rdkit import Chem
 from rdkit.Chem.EState.Fingerprinter import FingerprintMol
 from molvs import Standardizer
 
+from modules.data import *
 #################################### Helper functions #####################################
 ###########################################################################################
-class Settings:
-    def __init__(self, config_file: str) -> None:
-        self.load_settings(config_file)
-
-    def load_settings(self, config_file: str) -> None:
-        # Load settings from the JSON file
-        try:
-            with open(config_file) as f:
-                config = json.load(f)
-        except FileNotFoundError:
-            logging.warning(f"Error: {config_file} not found.")
-            return
-        except json.JSONDecodeError:
-            logging.warning(f"Error: Invalid JSON syntax in {config_file}.")
-            return
-
-        # Set default values for the settings
-        defaults: Dict[str, Any] = {
-            'fingerprint_type': 'EState',
-            'standardize_molec': False,
-            'umap': {
-                'n_neighbors': 15,
-                'min_dist': 0.1,
-                'n_components': 2,
-                'metric': 'euclidean',
-                'init': 'spectral'
-            },
-            'gmm': {
-                'max_n_clusters': 10,
-                'n_init': 10,
-                'iterations': 10,
-                'init_params': 'kmeans',
-                'covariance_type': 'full',
-                'warm_start' : False
-            },
-            'random_state': 10,
-            'max_K': 5,
-            'optimal_K': False
-        }
-
-        # Update the defaults with any values from the config file
-        settings_dict: Dict[str, Any] = {}
-        for k, v in defaults.items():
-            if k in config:
-                if isinstance(v, dict):
-                    settings_dict[k] = {**v, **config[k]}
-                else:
-                    settings_dict[k] = config[k]
-            else:
-                settings_dict[k] = v
-
-        # Set the settings as instance variables
-        for k, v in settings_dict.items():
-            setattr(self, k, v)
-
-    def save_settings(self, name: str, df: pd.DataFrame = None) -> None:
-
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-        # Create a dictionary with the settings
-        settings_dict = {}
-        settings_dict["timestamp"] = timestamp
-
-        for k, v in self.__dict__.items():
-            if not k.startswith('__'):
-                settings_dict[k] = v
-
-        # Add the DataFrame to the dictionary if it is provided
-        if df is not None:
-            df = df.iloc[:,:1]
-            df.columns = ['CVIs']
-            for k, v in df.to_dict().items():
-                settings_dict[k] = v
-
-        # Write the dictionary to a JSON file
-        with open(f'results/{name}/{name}_{timestamp}.json', 'w') as f:
-            json.dump(settings_dict, f, indent=4)
-
-def Get_name(archive):
-    """strip path and extension to return the name of a file"""
-    # name = os.path.splitext(os.path.basename(archive))[0]
-    return os.path.basename(archive).split('.')[0]
-
-def Make_dir(dirName: str):
-    """Create a directory and not fail if it already exist"""
-    try:
-        os.makedirs(dirName)
-    except FileExistsError:
-        pass
-
-def Get_input_data(input_file=None, test_file="test/focal_adhesion.csv"):
-    """Get data from user input or use test dataset"""
-    
-    file_path = input_file or test_file
-    if not os.path.exists(file_path):
-        raise ValueError(f'File not found: {file_path}')
-        
-    with open(file_path) as f:
-        data = pd.read_csv(f, delimiter=',', header=None)
-
-    name = Get_name(file_path)
-    logging.info(f'Loading {name} dataset')
-    logging.info(f'{len(data)} molecules loaded..')
-
-    return data, name
 
 def Standardize_molecules(data: pd.DataFrame) -> pd.DataFrame:
     """Standardize molecules using the MolVS package https://molvs.readthedocs.io/en/latest/.
@@ -336,7 +227,7 @@ def GMM_clustering_loop(embeddings: np.ndarray, settings) -> Tuple[pd.DataFrame,
 
     Parameters:
     embeddings (np.ndarray): An array of embeddings to cluster.
-    max_K (int): The maximum number of K values to try. Default is 10.
+    max_n_clusters (int): The maximum number of K values to try. Default is 10.
     iterations (int): The number of iterations to run for each K value. Default is 10.
     n_init (int): The number of initializations to perform for each K value. Default is 10.
     init_params (str): The method to initialize the model parameters. Default is 'kmeans'.
@@ -346,7 +237,7 @@ def GMM_clustering_loop(embeddings: np.ndarray, settings) -> Tuple[pd.DataFrame,
     Returns:
     Tuple[pd.DataFrame, int]: A tuple of the results dataframe and the K value which maximizes the silhouette score.
     """
-    max_K = settings.max_K
+    max_n_clusters = settings.gmm['max_n_clusters']
     iterations = settings.gmm['iterations']
     n_init = settings.gmm['n_init']
     init_params = settings.gmm['init_params']
@@ -355,9 +246,9 @@ def GMM_clustering_loop(embeddings: np.ndarray, settings) -> Tuple[pd.DataFrame,
 
     logging.info("SOMoC will try to find the optimal K")
 
-    temp = {i: [] for i in range(max_K+1)}  # pre-allocate the dictionary
+    temp = {i: [] for i in range(max_n_clusters+1)}  # pre-allocate the dictionary
 
-    for n in tqdm(range(2, max_K+1), desc='Optimizing the number of cluters'):
+    for n in tqdm(range(2, max_n_clusters+1), desc='Optimizing the number of cluters'):
         temp_sil = [None] * iterations # pre-allocate the list
         for x in range(iterations):
             gmm = GMM(n, n_init=n_init, init_params=init_params, covariance_type=covariance_type,
@@ -448,6 +339,8 @@ class ClustePlotter:
         results_loop (pd.DataFrame): A DataFrame containing the Silhouette score and standard deviation for each number of clusters tested.
         optimal_K (int): The optimal number of clusters selected.
         """
+        logging.info('Generating elbow plot')
+
         optimal_score = results_loop.loc[results_loop['Clusters'] == optimal_K, 'Silhouette'].values[0]
         optimal_stdv = results_loop.loc[results_loop['Clusters'] == optimal_K, 'sil_stdv'].values[0]
         optimal_label = f'Optimal K={optimal_K}\nSilhouette={optimal_score:.3f}±{optimal_stdv:.3f}'
@@ -472,7 +365,9 @@ class ClustePlotter:
 
     def distribution_plot(self, model, embedding):
         """Plot individual SIL scores each sample, agregated by cluster """
-    
+        
+        logging.info('Generating distribution plot')
+
         labels_final = model.predict(embedding)
         sil_bysample = silhouette_samples(embedding, labels_final, metric='cosine')
         sil_svg = round(float(silhouette_score(embedding, labels_final, metric='cosine')),3)
@@ -549,35 +444,30 @@ if __name__ == '__main__':
     ]
 )
     start_time = time.monotonic()
-
+    
+    # Load settings from JSON file
     settings = Settings(args.config)
+    
+    # Load data
+    data_handler = LoadData(args.input) 
 
-    print('='*100)
-
-    # Get input data
-    data_raw, name = Get_input_data(args.input)
+    # Get the smiles
+    data_raw, name = data_handler.parse_smiles_csv() 
 
     plotter = ClustePlotter(name)
-
-    # Create output dir
-    Make_dir(f'results/{name}')
-
-    # Standardize molecules
-    if settings.standardize_molec == True:
-        data = Standardize_molecules(data_raw)
-    else:
-        logging.info('Skipping molecules standardization.')
-        data = data_raw
-
-    print('='*100)
+    
+    # Create output dir 
+    make_dir(f'results/{name}') 
+    
+    # Convert smiles to RDKit molecule
+    data = data_handler.smiles_to_mol(data=data_raw, standardize=settings.standardize_molec)
+    
     # Calculate Fingerprints
-    X = Fingerprints_calculator(data)
+    X = Fingerprints_calculator(data) 
 
-    print('='*100)
     # Reduce feature space with UMAP
     embedding, n_components = UMAP_reduction(X, settings)
    
-    print('='*100)
     if settings.optimal_K is not False:
         # Run the clustering and calculate all CVIs
         results_clustered, results_CVIs, results_model = GMM_clustering_final(embedding, settings, K=settings.optimal_K)
@@ -585,14 +475,14 @@ if __name__ == '__main__':
         # If optimal_K is not set, run the GMM clustering loop to get K
         results_loop, optimal_K = GMM_clustering_loop(embedding, settings)
         results_clustered, results_CVIs, results_model = GMM_clustering_final(embedding, settings, K=optimal_K)
+        # Update the original JSON file
         settings.optimal_K = optimal_K
+        # Generate the elbow plot   
         plotter.elbow_plot(results_loop, optimal_K)
-       
-    print('='*100)
-    logging.info('Generating plots.')
+
+    # Generate the distribution plot   
     plotter.distribution_plot(results_model, embedding)
 
-    logging.info('Saving run settings to JSON file.')
     # Write the settings JSON file
     settings.save_settings(name, df=results_CVIs)
 

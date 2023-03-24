@@ -1,3 +1,4 @@
 results
 SOMoC.log
 .vscode/settings.json
+*.pyc
