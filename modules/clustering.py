@@ -103,7 +103,7 @@ class Clustering():
 
         temp = {i: [] for i in range(max_n_clusters+1)}  # pre-allocate the dictionary
 
-        for n in tqdm(range(2, max_n_clusters+1), desc='Optimizing the number of cluters'):
+        for n in tqdm(range(2, max_n_clusters+1), desc='Optimizing the number of clusters'):
             temp_sil = [None] * iterations # pre-allocate the list
             for x in range(iterations):
                 gmm = GMM(n, n_init=n_init, init_params=init_params, covariance_type=covariance_type,

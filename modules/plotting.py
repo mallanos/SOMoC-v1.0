@@ -6,7 +6,7 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-class ClusteringPlotter:
+class Plotting():
     def __init__(self, name):
         self.name = name
 
