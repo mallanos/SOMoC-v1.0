@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Tuple
 
 from rdkit import Chem
-from rdkit.Chem.EState.Fingerprinter import FingerprintMol
 from molvs import Standardizer
 
 def get_file_name(file_path: str) -> str:
