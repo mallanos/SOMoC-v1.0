@@ -58,9 +58,9 @@ if __name__ == '__main__':
     encoder = Encoding(data, settings)
     X = encoder.fingerprints_calculator() 
     
-    # Reduce feature space with UMAP
+    # Reduce feature space
     reducer = Reducing(X, settings)
-    embedding = reducer.UMAP()
+    embedding = reducer.reduce()
    
     clusterer = Clustering(name, embedding, settings)
 

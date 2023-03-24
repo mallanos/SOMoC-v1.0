@@ -2,7 +2,7 @@
     "timestamp": "2023-03-20_21-02-27",
     "random_state": 10,
     "standardize_molec": false,
-    "optimal_K": false,
+    "optimal_K": 13,
     "encoding": {
         "fingerprint_type": "estate",
         "radius": 2,
@@ -10,15 +10,15 @@
     },
     "reducing": {
         "reducer":"umap",
-        "n_components": 2,
-        "n_neighbors": false,
+        "n_components": false,
+        "n_neighbors": 10,
         "min_dist": 0.0,
         "metric": "jaccard",
         "init": "spectral"
     },
     "clustering": {
         "cluster":"gmm",
-        "max_n_clusters": 10,
+        "max_n_clusters": 20,
         "n_init": 10,
         "iterations": 5,
         "init_params": "kmeans",

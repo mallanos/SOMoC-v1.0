@@ -2,6 +2,7 @@ import numpy as np
 import logging
 from typing import List, Tuple, Union, Optional, Dict, Any
 import umap
+from sklearn.decomposition import PCA
 
 class Reducing():
     """
@@ -24,6 +25,21 @@ class Reducing():
             logging.error("Reducer: input must be a NumPy array")
             raise ValueError("Reducer: input must be a NumPy array")
         self.settings = settings
+
+    def reduce(self) -> np.ndarray:
+        """
+        Reduces the dimensionality of the input data using the specified method.
+
+        Returns:
+            numpy.ndarray: The reduced embedding of the input data.
+
+        """
+        if self.settings.reducing['reducer'] == 'umap':
+            return self.UMAP()
+        if self.settings.reducing['reducer'] == 'pca':
+            return self.pca()
+        else:
+            raise ValueError("Invalid method. Must be 'umap' or 'pca'.")
 
     def UMAP(self) -> np.ndarray:
         """
@@ -60,5 +76,27 @@ class Reducing():
         reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=n_components, metric=metric,
                             init=init, random_state=random_state).fit(self.X)
         embedding = reducer.transform(self.X)
+
+        return embedding
+
+    def pca(self) -> np.ndarray:
+        """
+        Applies the PCA reduction algorithm to the input data X.
+
+        Returns:
+            numpy.ndarray: The reduced embedding of the input data.
+
+        """
+        if self.settings.reducing['n_components'] == False:
+            n_components = 0.95
+            logging.info(f'Approximating n_components that explain 95% of the variance')
+        else:
+            n_components =  self.settings.reducing['n_components']
+
+        random_state = self.settings.random_state
+        
+        reducer = PCA(n_components=n_components, random_state=random_state)
+        embedding = reducer.fit_transform(self.X)
+        logging.info(f'Running PCA with n_components={reducer.n_components_}.')
 
         return embedding
