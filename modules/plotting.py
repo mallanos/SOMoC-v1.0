@@ -1,3 +1,5 @@
+from typing import List, Tuple, Union, Optional, Dict, Any
+import pandas as pd
 import numpy as np
 import logging
 from sklearn.metrics import silhouette_score, silhouette_samples
@@ -6,7 +8,18 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-def scatterplot_2D(name, labels_final, embedding):
+def scatterplot_2D(name: str, labels_final: np.ndarray, embedding: np.ndarray) -> None:
+    """
+    Create a 2D scatter plot of embeddings with colors corresponding to cluster labels.
+
+    Args:
+        name (str): The name of the plot.
+        labels_final (np.ndarray): A 1D array of cluster labels.
+        embedding (np.ndarray): A 2D array of embeddings.
+
+    Returns:
+        None
+    """
     # sns.set_context("talk", font_scale=1.1)
     # sns.set_style("whitegrid")
     plt.subplots(figsize = (8, 6))
@@ -27,32 +40,41 @@ def scatterplot_2D(name, labels_final, embedding):
     plt.savefig(f'results/{name}/scatterplot2D.png')
 
 
-class Plotting():
-    def __init__(self, name):
+class Plotting:
+    def __init__(self, name: str):
+        """
+        Initialize the Plotting object.
+
+        Args:
+        - name (str): Name of the object.
+        """
         self.name = name
 
-    def elbow_plot_SIL(self, results_loop, optimal_K):
-        """Draw the elbow plot of SIL score vs. K.
+    def elbow_plot_SIL(self, results_loop: pd.DataFrame, optimal_K: int) -> None:
+        """
+        Draw the elbow plot of SIL score vs. K.
 
-        Parameters:
-        name (str): The name of the dataset or experiment.
-        results_loop (pd.DataFrame): A DataFrame containing the Silhouette score and standard deviation for each number of clusters tested.
-        optimal_K (int): The optimal number of clusters selected.
+        Args:
+        - results_loop (pd.DataFrame): A pandas DataFrame with columns 'Clusters', 'Silhouette', and 'sil_stdv'.
+        - optimal_K (int): The optimal number of clusters.
+
+        Returns:
+        None.
         """
         logging.info('Generating elbow plot')
 
         optimal_score = results_loop.loc[results_loop['Clusters'] == optimal_K, 'Silhouette'].values[0]
         optimal_stdv = results_loop.loc[results_loop['Clusters'] == optimal_K, 'sil_stdv'].values[0]
         optimal_label = f'Optimal K={optimal_K}\nSilhouette={optimal_score:.3f}±{optimal_stdv:.3f}'
-        
+
         fig, ax1 = plt.subplots(figsize=(14, 6))
 
         sil = sns.lineplot(data=results_loop, x='Clusters', y="Silhouette", color='b', ci=None, estimator=np.median,
                         ax=ax1)
-        
+
         sil_error = ax1.errorbar(x=results_loop['Clusters'], y=results_loop['Silhouette'], yerr=results_loop['sil_stdv'],
                                 fmt='none', ecolor='b', capsize=4, elinewidth=1.5)
-        
+
         plt.axvline(x=optimal_K, color='r', linestyle='--', label=optimal_label, linewidth=1.5)
 
         plt.legend(fancybox=True, framealpha=0.5, fontsize='15', loc='best', title_fontsize='30')
@@ -63,8 +85,17 @@ class Plotting():
         plt.tight_layout()
         plt.savefig(f'results/{self.name}/{self.name}_Elbowplot.png')
 
-    def distribution_plot(self, model, embedding):
-        """Plot individual SIL scores each sample, agregated by cluster """
+    def distribution_plot(self, model: Any, embedding: np.ndarray) -> None:
+        """
+        Plot individual SIL scores each sample, agregated by cluster.
+
+        Args:
+        - model (Any): A clustering model (e.g., KMeans, DBSCAN).
+        - embedding (np.ndarray): A numpy array of shape (n_samples, n_features) containing the data to be clustered.
+
+        Returns:
+        None.
+        """
         
         logging.info('Generating distribution plot')
 
