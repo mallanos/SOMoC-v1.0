@@ -61,9 +61,9 @@ class Settings:
             },
             "reducing": {
                 "reducer":"umap",
-                "n_neighbors": 10,
+                "n_neighbors": False,
                 "min_dist": 0.0,
-                "n_components": 5,
+                "n_components": False,
                 "metric": "jaccard",
                 "init": "spectral"
             },

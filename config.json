@@ -10,9 +10,9 @@
     },
     "reducing": {
         "reducer":"umap",
-        "n_neighbors": 10,
+        "n_components": 2,
+        "n_neighbors": false,
         "min_dist": 0.0,
-        "n_components": 5,
         "metric": "jaccard",
         "init": "spectral"
     },

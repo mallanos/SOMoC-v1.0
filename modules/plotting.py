@@ -6,6 +6,27 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
+def scatterplot_2D(name, labels_final, embedding):
+    # sns.set_context("talk", font_scale=1.1)
+    # sns.set_style("whitegrid")
+    plt.subplots(figsize = (8, 6))
+    
+    # g = sns.scatterplot(x=embedding[:, 0], y=embedding[:, 1], size="size", hue="size", alpha=0.5,
+    #                     sizes=(100, 1000), palette="viridis", edgecolors="black")
+    plt.scatter(embedding[:, 0], embedding[:, 1], c=labels_final.astype(int), s=0.1, cmap='Spectral')
+
+    plt.tick_params(labelsize=12)
+
+    # plt.legend(fancybox=True,framealpha=0.5,fontsize='15',loc='best', title_fontsize='30',
+    #         bbox_to_anchor=(1., 1.))
+
+    # plt.title(f"Clustering", fontsize=20)
+    plt.xlabel("embedding_1", fontsize=15);plt.ylabel("embedding_2", fontsize=15)
+    plt.autoscale()
+    plt.tight_layout()
+    plt.savefig(f'results/{name}/scatterplot2D.png')
+
+
 class Plotting():
     def __init__(self, name):
         self.name = name
@@ -96,9 +117,13 @@ class Plotting():
         ax.set_ylabel("Cluster label", fontsize=20)
         ax.set_yticks(y_tick_pos_)
         ax.set_yticklabels([str(i) for i in range(model.n_components)]) #,fontdict={'fontsize':15}
-        # change the fontsize
         ax.tick_params(axis='both', labelsize=15)   
         ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
         # ax.legend(loc="best")
         plt.tight_layout()
         plt.savefig(f'results/{self.name}/SIL_bycluster.png')
+
+        # Only if 2 dimensions, plot 2D scatterplot
+        if model.n_components == 2:
+            logging.info('Generating 2D scatterplot plot')
+            scatterplot_2D(self.name, labels_final, embedding)

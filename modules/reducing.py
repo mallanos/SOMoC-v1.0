@@ -39,13 +39,21 @@ class Reducing():
         init = self.settings.reducing['init']
         metric = self.settings.reducing['metric']
         random_state = self.settings.random_state
-           
-        if n_neighbors >= len(self.X):
-            logging.error("The number of neighbors must be smaller than the number of molecules to cluster")
-            raise ValueError("The number of neighbors must be smaller than the number of molecules to cluster")
 
-        n_components = int(np.ceil(np.log(len(self.X))/np.log(4)))
-        n_neighbors = max(10, int(np.sqrt(self.X.shape[0])))
+        if self.settings.reducing['n_components'] == False:
+            n_components = int(np.ceil(np.log(len(self.X))/np.log(4)))
+            logging.info(f'Approximating n_components based on dataset size')
+        else:
+            n_components = self.settings.reducing['n_components']
+
+        if self.settings.reducing['n_neighbors'] == False:
+            n_neighbors = max(10, int(np.sqrt(self.X.shape[0])))
+            logging.info(f'Approximating n_neighbors based on dataset size')
+        else:
+            n_neighbors = self.settings.reducing['n_neighbors']
+            if n_neighbors >= len(self.X):
+                logging.error("The number of neighbors must be smaller than the number of molecules to cluster")
+                raise ValueError("The number of neighbors must be smaller than the number of molecules to cluster")
 
         logging.info(f'Running UMAP with {n_components} components and {n_neighbors} neighbors.')
 
