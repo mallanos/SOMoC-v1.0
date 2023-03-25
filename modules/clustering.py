@@ -31,7 +31,7 @@ def calculate_CVIs(embedding: np.ndarray, labels: List, Random: bool = True, num
         for i in range(num_iterations):
             np.random.seed(i)
             random_clusters = np.random.randint(num_clusters, size=len(embedding))
-            silhouette_random = silhouette_score(embedding, random_clusters)
+            silhouette_random = silhouette_score(embedding, random_clusters, metric='euclidean')
             SILs[i] = silhouette_random
             db_random = davies_bouldin_score(embedding, random_clusters)
             DBs[i] = db_random
@@ -60,7 +60,7 @@ def calculate_CVIs(embedding: np.ndarray, labels: List, Random: bool = True, num
         assert embedding.ndim == 2, "Embeddings must be a 2D array"
 
         results['SOMoC'] = {
-            'silhouette': silhouette_score(embedding, labels, metric='cosine').round(4),
+            'silhouette': silhouette_score(embedding, labels, metric='euclidean').round(4),
             'davies_bouldin': davies_bouldin_score(embedding, labels).round(4),
             'calinski_harabasz': calinski_harabasz_score(embedding, labels).round(4),
             'dunn': dunn(pairwise_distances(embedding), labels).round(4)
@@ -110,7 +110,7 @@ class Clustering():
                         warm_start=warm_start, random_state=x, verbose=0).fit(self.embedding)
                 labels = gmm.predict(self.embedding)
                 temp_sil[x] = silhouette_score(
-                    self.embedding, labels, metric='cosine')
+                    self.embedding, labels, metric='euclidean')
             temp[n] = [int(n),np.mean(temp_sil), np.std(temp_sil)]
 
         results = pd.DataFrame.from_dict(
@@ -166,3 +166,4 @@ class Clustering():
         results_CVIs.to_csv(f'results/{self.name}/{self.name}_CVIs.csv', index=True, header=True)
 
         return results_clustered, results_CVIs, GMM_final
+        

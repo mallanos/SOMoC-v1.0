@@ -63,7 +63,8 @@ if __name__ == '__main__':
     embedding = reducer.reduce()
    
     clusterer = Clustering(name, embedding, settings)
-
+    
+    # TODO merge these two clustering functions into a single one 
     if settings.optimal_K is not False:
         # Run the clustering and calculate all CVIs
         results_clustered, results_CVIs, results_model = clusterer.GMM_final(K=settings.optimal_K)

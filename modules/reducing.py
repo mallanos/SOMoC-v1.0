@@ -54,10 +54,12 @@ class Reducing():
         min_dist = self.settings.reducing['min_dist']
         init = self.settings.reducing['init']
         metric = self.settings.reducing['metric']
+        densemap = self.settings.reducing['densemap']
         random_state = self.settings.random_state
 
         if self.settings.reducing['n_components'] == False:
-            n_components = int(np.ceil(np.log(len(self.X))/np.log(4)))
+            n = 3 # Bigger n means fewer components
+            n_components = int(np.ceil(np.log(len(self.X))/np.log(n)))
             logging.info(f'Approximating n_components based on dataset size')
         else:
             n_components = self.settings.reducing['n_components']
@@ -74,7 +76,7 @@ class Reducing():
         logging.info(f'Running UMAP with {n_components} components and {n_neighbors} neighbors.')
 
         reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, n_components=n_components, metric=metric,
-                            init=init, random_state=random_state).fit(self.X)
+                            init=init, densmap=densemap,random_state=random_state).fit(self.X)
         embedding = reducer.transform(self.X)
 
         return embedding

@@ -65,7 +65,8 @@ class Settings:
                 "min_dist": 0.0,
                 "n_components": False,
                 "metric": "jaccard",
-                "init": "spectral"
+                "init": "spectral",
+                "densemap": False
             },
             "clustering": {
                 "cluster":"gmm",
@@ -130,7 +131,7 @@ class LoadData:
             raise ValueError(f'File not found: {file_path}')
 
         with file_path.open() as f:
-            data = pd.read_csv(f, delimiter=',', header=None)
+            data = pd.read_csv(f, delimiter=',')
 
         name = get_file_name(file_path)
         logging.info(f'Loading {name} dataset')
@@ -154,7 +155,11 @@ class LoadData:
         """
         df = data.copy()
 
-        input_smiles = df.iloc[:, 0]
+        if 'smiles' in data.columns:
+            input_smiles = data['smiles']
+        else:
+            input_smiles = data.iloc[:,0]
+      
         output_smiles = [np.nan] * len(input_smiles)
 
         for i, smiles in tqdm(enumerate(input_smiles), total=len(input_smiles), desc='Converting SMILES to molecules'):
