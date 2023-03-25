@@ -11,4 +11,4 @@ iRaPCA and SOMoC: Development and Validation of Web Applications for New Approac
 This is a fork which aims to improve the original algorithm (only the standalone version) by introducing several new features and functionality improvements.
 As the code is being heavily refactored it may not work as expected. Also, documentation is on the way !
 
-You can contact me here or on my Linkedin http;//www.linkedin.com/in/llanos-manuel
+You can contact me here or on my Linkedin http://www.linkedin.com/in/llanos-manuel
