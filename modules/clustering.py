@@ -42,14 +42,14 @@ def calculate_CVIs(embedding: np.ndarray, labels: List, Random: bool = True, num
             dunn_random = dunn(dist_dunn, random_clusters)
             DUNNs[i] = dunn_random
 
-        sil_random = np.mean(SILs).round(4)
-        sil_random_st = np.std(SILs).round(4)
-        db_random = np.mean(DBs).round(4)
-        db_random_st = np.std(DBs).round(4)
-        ch_random = np.mean(CHs).round(4)
-        ch_random_st = np.std(CHs).round(4)
-        dunn_random = np.mean(DUNNs).round(4)
-        dunn_random_st = np.std(DUNNs).round(4)
+        sil_random = np.mean(SILs)
+        sil_random_st = np.std(SILs)
+        db_random = np.mean(DBs)
+        db_random_st = np.std(DBs)
+        ch_random = np.mean(CHs)
+        ch_random_st = np.std(CHs)
+        dunn_random = np.mean(DUNNs)
+        dunn_random_st = np.std(DUNNs)
 
         random_means = [sil_random, db_random, ch_random, dunn_random]
         random_sds = [sil_random_st, db_random_st, ch_random_st, dunn_random_st]
@@ -61,14 +61,14 @@ def calculate_CVIs(embedding: np.ndarray, labels: List, Random: bool = True, num
         assert embedding.ndim == 2, "Embeddings must be a 2D array"
 
         results['SOMoC'] = {
-            'silhouette': silhouette_score(embedding, labels, metric='euclidean').round(4),
-            'davies_bouldin': davies_bouldin_score(embedding, labels).round(4),
-            'calinski_harabasz': calinski_harabasz_score(embedding, labels).round(4),
-            'dunn': dunn(pairwise_distances(embedding), labels).round(4)
+            'silhouette': silhouette_score(embedding, labels, metric='euclidean'),
+            'davies_bouldin': davies_bouldin_score(embedding, labels),
+            'calinski_harabasz': calinski_harabasz_score(embedding, labels),
+            'dunn': dunn(pairwise_distances(embedding), labels)
         }
         results = pd.DataFrame.from_dict(results)
 
-    return results
+    return results.round(3)
 
 class Clustering():
 

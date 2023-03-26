@@ -1,7 +1,6 @@
 {
-    "timestamp": "2023-03-20_21-02-27",
     "random_state": 10,
-    "standardize_molec": false,
+    "standardize_molec": true,
     "optimal_K": false,
     "encoding": {
         "fingerprint_type": "estate",

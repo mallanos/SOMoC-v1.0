@@ -30,6 +30,22 @@ def make_dir(dirName: str):
     except FileExistsError:
         pass
 
+def merge_data(name: str, data: pd.DataFrame, data_clustered: pd.DataFrame) -> None:
+    """add a column with the cluster to the original dataframe"""
+    # results_clustered = data.join(cluster_final)
+    if 'mol' in data.columns:  # Check if mol column from standardization is present
+        try:
+            data['smiles_standardized'] = data['mol'].apply(
+                lambda x: Chem.MolToSmiles(x))
+            data.drop(['mol'], axis=1, inplace=True)
+        except Exception as e:
+            logging.error(f"Failed to convert mol to Smiles: ({e})")
+    
+    df = pd.concat([data,data_clustered], axis=1)
+    df.to_csv(f'results/{name}/{name}_Clustered.csv', index=True, header=True)
+    
+    return None
+
 class Settings:
     def __init__(self, config_file: str) -> None:
         self.load_settings(config_file)
@@ -101,7 +117,7 @@ class Settings:
 
         # Create a dictionary with the settings
         settings_dict = {}
-        settings_dict["timestamp"] = timestamp
+        settings_dict["dataset"] = name
 
         for k, v in self.__dict__.items():
             if not k.startswith('__'):

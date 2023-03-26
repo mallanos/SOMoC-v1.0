@@ -16,6 +16,8 @@ from modules.clustering import *
 from modules.encoding import *
 from modules.reducing import *
 
+
+# TODO a function to save within data class which have access to name
 ####################################### SOMoC main ########################################
 ###########################################################################################
 if __name__ == '__main__':
@@ -64,6 +66,8 @@ if __name__ == '__main__':
    
     clusterer = Clustering(name, embedding, settings)
     K, results_loop, data_clustered, results_CVIs, clustering_model = clusterer.cluster()
+    
+    merge_data(name, data, data_clustered)
     
     # Generate Elbow plot
     if results_loop is not None: plotter.elbow_plot_SIL(results_loop, K)
