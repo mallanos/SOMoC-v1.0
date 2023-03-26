@@ -16,11 +16,11 @@ from modules.clustering import *
 from modules.encoding import *
 from modules.reducing import *
 
-
 # TODO a function to save within data class which have access to name
+# TODO smiles_to_mol output a list not a df
 ####################################### SOMoC main ########################################
 ###########################################################################################
-if __name__ == '__main__':
+def main():
 
     parser = argparse.ArgumentParser(prog='SOMoC', description='SOMoC is a clustering methodology based on the combination of molecular fingerprinting, dimensionality reduction by the Uniform Manifold Approximation and Projection (UMAP) algorithm and clustering with the Gaussian Mixture Model (GMM) algorithm.')
     parser.add_argument('-c','--config', help='Path to JSON config file', required=True)
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     
     # Convert SMILES to RDKit molecule
     data = data_handler.smiles_to_mol(data=data_raw, standardize=settings.standardize_molec)
-    
+
     # Calculate Fingerprints
     encoder = Encoding(data, settings)
     X = encoder.fingerprints_calculator() 
@@ -87,5 +87,6 @@ if __name__ == '__main__':
     print('='*100)
     
 
-
+if __name__ == '__main__':
+    main()
 

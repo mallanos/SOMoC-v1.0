@@ -147,7 +147,7 @@ class LoadData:
             raise ValueError(f'File not found: {file_path}')
 
         with file_path.open() as f:
-            data = pd.read_csv(f, delimiter=',')
+            data = pd.read_csv(f, delimiter=',', header='infer')
 
         name = get_file_name(file_path)
         logging.info(f'Loading {name} dataset')
