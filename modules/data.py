@@ -2,11 +2,12 @@ import pandas as pd
 from array import array
 import time
 import os
+import re
 from typing import List, Tuple, Union, Optional, Dict, Any
 from datetime import date
 from pathlib import Path
 import numpy as np
-import json
+import rapidjson
 import logging
 from tqdm import tqdm
 from datetime import datetime
@@ -18,6 +19,8 @@ from typing import Tuple
 
 from rdkit import Chem
 from molvs import Standardizer
+
+CONFIG_PARSE_MODE = rapidjson.PM_COMMENTS | rapidjson.PM_TRAILING_COMMAS
 
 def get_file_name(file_path: str) -> str:
     """Strip path and extension to return the name of a file"""
@@ -48,22 +51,21 @@ def merge_data(name: str, data: pd.DataFrame, data_clustered: pd.DataFrame) -> N
 
 class Settings:
     def __init__(self, config_file: str) -> None:
-        self.load_settings(config_file)
+        self.load_config_file(config_file)
 
-    def load_settings(self, config_file: str) -> None:
+    def load_config_file(self, config_file: str) -> None:
         
         logging.info('Loading settings from JSON file.')
 
         # Load settings from the JSON file
         try:
             with open(config_file) as f:
-                config = json.load(f)
+                config = rapidjson.load(f, parse_mode=CONFIG_PARSE_MODE)
         except FileNotFoundError:
-            logging.warning(f"Error: {config_file} not found.")
+            logging.error(f"Error: {config_file} not found.")
             return
-        except json.JSONDecodeError:
-            logging.warning(f"Error: Invalid JSON syntax in {config_file}.")
-            return
+        except rapidjson.JSONDecodeError as e:
+            logging.error(f'{e}\n   Error: Invalid JSON syntax in {config_file}')
 
         # Set default values for the settings
         defaults: Dict[str, Any] = {
@@ -132,7 +134,7 @@ class Settings:
 
         # Write the dictionary to a JSON file
         with open(f'results/{name}/{name}_{timestamp}.json', 'w') as f:
-            json.dump(settings_dict, f, indent=4)
+            rapidjson.dump(settings_dict, f, indent=4)
 
 class LoadData:
     def __init__(self, _file: str) -> None:

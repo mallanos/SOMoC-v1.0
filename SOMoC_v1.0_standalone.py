@@ -47,9 +47,7 @@ def main():
 
     # Get the smiles
     data_raw, name = data_handler.parse_smiles_csv() 
-
-    plotter = Plotting(name)
-    
+   
     # Create output dir 
     make_dir(f'results/{name}') 
     
@@ -69,6 +67,8 @@ def main():
     
     merge_data(name, data, data_clustered)
     
+    plotter = Plotting(name)
+
     # Generate Elbow plot
     if results_loop is not None: plotter.elbow_plot_SIL(results_loop, K)
 
