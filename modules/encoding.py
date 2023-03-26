@@ -39,7 +39,7 @@ class Encoding():
         if fingerprint_type not in ['estate', 'morgan', 'maccs']:
             raise ValueError("Invalid fingerprint type. Must be 'estate','morgan or 'maccs'.")
 
-        logging.info(f"Calculating {fingerprint_type.upper()} molecular fingerprints with radius={radius} and nbits={nbits}...")
+        logging.info(f"Calculating {fingerprint_type.upper()} molecular fingerprints")
 
         mols = [MolFromSmiles(smiles) for smiles in self.smiles_list]
         fps = [None] * len(mols)

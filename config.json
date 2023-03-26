@@ -10,7 +10,7 @@
     },
     "reducing": {
         "reducer":"umap",
-        "n_components": 2,
+        "n_components": false,
         "n_neighbors": false,
         "min_dist": 0.0,
         "metric": "euclidean",
@@ -18,11 +18,11 @@
         "densemap": false
     },
     "clustering": {
-        "cluster":"gmm",
-        "max_n_clusters": 12,
-        "n_init": 3,
-        "iterations": 5,
+        "method":"kmeans",
+        "max_n_clusters": 15,
+        "n_init": 5,
         "init_params": "kmeans",
+        "n_iter": 5,
         "covariance_type": "full",
         "warm_start": false
     },

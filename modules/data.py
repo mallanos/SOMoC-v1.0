@@ -69,7 +69,7 @@ class Settings:
                 "densemap": False
             },
             "clustering": {
-                "cluster":"gmm",
+                "method":"gmm",
                 "max_n_clusters": 10,
                 "n_init": 10,
                 "iterations": 10,

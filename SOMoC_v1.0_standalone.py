@@ -63,22 +63,13 @@ if __name__ == '__main__':
     embedding = reducer.reduce()
    
     clusterer = Clustering(name, embedding, settings)
+    K, results_loop, data_clustered, results_CVIs, clustering_model = clusterer.cluster()
     
-    # TODO merge these two clustering functions into a single one 
-    if settings.optimal_K is not False:
-        # Run the clustering and calculate all CVIs
-        results_clustered, results_CVIs, results_model = clusterer.GMM_final(K=settings.optimal_K)
-    else:
-        # If optimal_K is not set, run the GMM clustering loop to get K
-        results_loop, optimal_K = clusterer.GMM_loop()
-        results_clustered, results_CVIs, results_model = clusterer.GMM_final(K=optimal_K)
-        # Update the original JSON file
-        settings.optimal_K = optimal_K
-        # Generate the elbow plot   
-        plotter.elbow_plot_SIL(results_loop, optimal_K)
+    # Generate Elbow plot
+    if results_loop is not None: plotter.elbow_plot_SIL(results_loop, K)
 
     # Generate the distribution plot   
-    plotter.distribution_plot(results_model, embedding)
+    plotter.distribution_plot(clustering_model, embedding)
 
     # Write the settings JSON file
     settings.save_settings(name, df=results_CVIs)

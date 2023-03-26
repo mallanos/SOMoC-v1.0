@@ -59,58 +59,79 @@ def scatterplot_2D(name: str, model: Any, embedding: np.ndarray) -> None:
 
     Args:
         name (str): The name of the plot.
-        labels_final (np.ndarray): A 1D array of cluster labels.
+        model (Any): Fitted clustering model
         embedding (np.ndarray): A 2D array of embeddings.
 
     Returns:
         None
     """
-    labels_final = model.predict(embedding)
+    model_name = type(model).__name__
+    labels = model.predict(embedding)
+    n_clusters = len(set(labels))
 
     # sns.set_context("talk", font_scale=1.1)
-    # sns.set_style("whitegrid")
-    # plt.subplots(figsize = (8, 6))
+    sns.set_style("white")
+
     fig, ax = plt.subplots(figsize=(8, 8))
+    # create colormap based on number of clusters viridis/spectral
+    cmap = ListedColormap(plt.cm.viridis(np.linspace(0, 1, n_clusters)))
+    # Create scatterplot
+    ax.scatter(embedding[:, 0], embedding[:, 1], c=labels, cmap=cmap, s=10, alpha=0.5)
+      
+    if model_name == 'GaussianMixture':
+        for i in range(n_clusters):
+            mean = model.means_[i]
+            cov = model.covariances_[i]
+            if model.covariance_type == 'spherical':
+                cov = np.diag(cov)
+            elif model.covariance_type == 'diag':
+                cov = np.diag(cov)
+            elif model.covariance_type == 'tied':
+                cov = model.covariances_
+            elif model.covariance_type == 'full':
+                cov = model.covariances_[i]
+            else:
+                raise ValueError("Invalid covariance type.")
+            w, v = np.linalg.eigh(cov)
+            angle = np.arctan2(v[0][1], v[0][0]) * 180 / np.pi
+            width, height = 2 * np.sqrt(w)
+            ell = Ellipse(mean, width, height, angle, alpha=0.3, facecolor=cmap(i))
+            ax.add_artist(ell)
 
-    # g = sns.scatterplot(x=embedding[:, 0], y=embedding[:, 1], size="size", hue="size", alpha=0.5,
-    #                     sizes=(100, 1000), palette="viridis", edgecolors="black")
-    ax.scatter(embedding[:, 0], embedding[:, 1], c=labels_final.astype(int), s=10, cmap='Spectral')
-    # ax.scatter(X[:, 0], X[:, 1], s=10, c='black', alpha=0.5)
+    elif model_name == 'KMeans':
+        centers = model.cluster_centers_
+        ax.scatter(centers[:, 0], centers[:, 1], c="r", s=30, marker='x')
 
-    # Get the means and covariances of the GMM model
-    means = model.means_
-    covariances = model.covariances_
+        # CODE TO GET CONTOUR PLOTS - NOT USED
+        # Get the means and covariances of the GMM model
+        # means = model.means_
+        # covariances = model.covariances_
 
-    # Define the range of x and y values based on the limits of the embedding
-    xmin, xmax = np.min(embedding[:,0]), np.max(embedding[:,0])
-    ymin, ymax = np.min(embedding[:,1]), np.max(embedding[:,1])
-    x = np.linspace(xmin, xmax, 100)
-    y = np.linspace(ymin, ymax, 100)
-    X, Y = np.meshgrid(x, y)
-    pos = np.empty(X.shape + (2,))
-    pos[:, :, 0] = X
-    pos[:, :, 1] = Y
+        # # Define the range of x and y values based on the limits of the embedding
+        # xmin, xmax = np.min(embedding[:,0]), np.max(embedding[:,0])
+        # ymin, ymax = np.min(embedding[:,1]), np.max(embedding[:,1])
+        # x = np.linspace(xmin, xmax, 100)
+        # y = np.linspace(ymin, ymax, 100)
+        # X, Y = np.meshgrid(x, y)
+        # pos = np.empty(X.shape + (2,))
+        # pos[:, :, 0] = X
+        # pos[:, :, 1] = Y
 
-    # Evaluate the PDF of the GMM model at each point
-    Z = np.zeros(X.shape)
-    for k in range(model.n_components):
-        rv = multivariate_normal(means[k], covariances[k])
-        Z += model.weights_[k] * rv.pdf(pos)
+        # # Evaluate the PDF of the GMM model at each point
+        # Z = np.zeros(X.shape)
+        # for k in range(n_clusters):
+        #     rv = multivariate_normal(means[k], covariances[k])
+        #     Z += model.weights_[k] * rv.pdf(pos)
 
-    # Create the contour plot
-    # fig, ax = plt.subplots()
-    contour = ax.contour(X, Y, Z)
-    ax.clabel(contour, inline=True, fontsize=8)
-    ax.set_title('GMM Contour plot')
-    ax.set_xlim([xmin, xmax])
-    ax.set_ylim([ymin, ymax])
-    # plt.tick_params(labelsize=12)
+        # # Create the contour plot
+        # contour = ax.contour(X, Y, Z)
+        # ax.clabel(contour, inline=True, fontsize=8)
+        # ax.set_xlim([xmin, xmax])
+        # ax.set_ylim([ymin, ymax])
 
-    # # plt.legend(fancybox=True,framealpha=0.5,fontsize='15',loc='best', title_fontsize='30',
-    # #         bbox_to_anchor=(1., 1.))
-
-    # # plt.title(f"Clustering", fontsize=20)
-    # plt.xlabel("embedding_1", fontsize=15);plt.ylabel("embedding_2", fontsize=15)
+    plt.title(f"{model_name} clustering with K={n_clusters}", fontsize=20)
+    plt.tick_params(labelsize=10)
+    plt.xlabel("Component 1", fontsize=15);plt.ylabel("Component 2", fontsize=15)
     plt.autoscale()
     plt.tight_layout()
     plt.savefig(f'results/{name}/scatterplot2D.png')
@@ -176,8 +197,9 @@ class Plotting:
         logging.info('Generating distribution plot')
 
         labels_final = model.predict(embedding)
-        sil_bysample = silhouette_samples(embedding, labels_final, metric='cosine')
-        sil_svg = round(float(silhouette_score(embedding, labels_final, metric='cosine')),3)
+        n_clusters = len(set(labels_final))
+        sil_bysample = silhouette_samples(embedding, labels_final, metric='euclidean')
+        sil_svg = round(float(silhouette_score(embedding, labels_final, metric='euclidean')),3)
         
         y_lower = 10
         y_tick_pos_ = []
@@ -185,7 +207,7 @@ class Plotting:
         fig, (ax) = plt.subplots(1)
         fig.set_size_inches(9, 12)
 
-        for i in range(model.n_components):
+        for i in range(n_clusters):
             # Aggregate the silhouette scores for samples belonging to cluster i, and sort them
             ith_cluster_SILs = sil_bysample[labels_final == i]
             ith_cluster_SILs.sort()
@@ -194,7 +216,7 @@ class Plotting:
 
             y_upper = y_lower + size_cluster_i
 
-            color = cm.nipy_spectral(float(i) / model.n_components)
+            color = cm.nipy_spectral(float(i) / n_clusters)
             # color = sns.color_palette("rocket", n_colors=model.n_components)#, as_cmap=True)
 
             ax.fill_betweenx(
@@ -214,16 +236,16 @@ class Plotting:
         # ax.axvline(x=sil_svg, color="red", linestyle="--", label=f"Avg SIL score: {sil_svg}")
         ax.axvline(x=sil_svg, color="red", linestyle="--")
 
-        ax.set_title(f"Silhouette Plot for {model.n_components} clusters", fontsize=20)
+        ax.set_title(f"Silhouette Plot for {n_clusters} clusters", fontsize=20)
 
         l_xlim = max(-1, min(-0.1, round(min(sil_bysample) - 0.1, 1)))
         u_xlim = min(1, round(max(sil_bysample) + 0.1, 1))
         ax.set_xlim([l_xlim, u_xlim])
-        ax.set_ylim([0, embedding.shape[0] + (model.n_components + 1) * 10])
+        ax.set_ylim([0, embedding.shape[0] + (n_clusters + 1) * 10])
         ax.set_xlabel("Silhouette coefficient values", fontsize=20)
         ax.set_ylabel("Cluster label", fontsize=20)
         ax.set_yticks(y_tick_pos_)
-        ax.set_yticklabels([str(i) for i in range(model.n_components)]) #,fontdict={'fontsize':15}
+        ax.set_yticklabels([str(i) for i in range(n_clusters)]) #,fontdict={'fontsize':15}
         ax.tick_params(axis='both', labelsize=15)   
         ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
         # ax.legend(loc="best")
@@ -231,7 +253,7 @@ class Plotting:
         plt.savefig(f'results/{self.name}/SIL_bycluster.png')
 
         # Only if 2 dimensions, plot 2D scatterplot
-        if embedding.shape[1] == 2:
+        # Currently ONLY work for euclidean spaces
+        if (embedding.shape[1] == 2):
             logging.info('Generating 2D scatterplot plot')
-            # scatterplot_2D(self.name, model, embedding)
-            plot_GMM(self.name, embedding, model)
+            scatterplot_2D(self.name, model, embedding)
