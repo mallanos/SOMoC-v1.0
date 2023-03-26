@@ -31,9 +31,9 @@ def make_dir(dirName: str):
     except FileExistsError:
         pass
 
-def merge_data(name: str, data: pd.DataFrame, data_clustered: pd.DataFrame) -> None:
+def merge_data(name: str, data: pd.DataFrame, labels: np.ndarray) -> None:
     """add a column with the cluster to the original dataframe"""
-    # results_clustered = data.join(cluster_final)
+
     if 'mol' in data.columns:  # Check if mol column from standardization is present
         try:
             data['smiles_standardized'] = data['mol'].apply(
@@ -41,8 +41,10 @@ def merge_data(name: str, data: pd.DataFrame, data_clustered: pd.DataFrame) -> N
             data.drop(['mol'], axis=1, inplace=True)
         except Exception as e:
             logging.error(f"Failed to convert mol to Smiles: ({e})")
-    
-    df = pd.concat([data,data_clustered], axis=1)
+
+    # Concatenate the labels array to the DataFrame as a new column
+    df = pd.concat([data, pd.Series(labels, name='cluster')], axis=1)
+
     df.to_csv(f'results/{name}/{name}_Clustered.csv', index=True, header=True)
     
     return None

@@ -182,7 +182,7 @@ class Clustering():
         random_state (int): The random seed to use.
 
         Returns:
-            data_clustered (pandas.DataFrame): The input data with an additional 'cluster' column.
+            laebls (np.ndarray): Cluster labels
         """
         n_init = self.settings.clustering['n_init']
         init_params = self.settings.clustering['init_params']
@@ -193,24 +193,22 @@ class Clustering():
         GMM_final = GMM(K, n_init=n_init, init_params=init_params, warm_start=warm_start,
                         covariance_type=covariance_type, random_state=random_state, verbose=0)
         GMM_final.fit(self.embedding)
-        labels_final = GMM_final.predict(self.embedding)
+        labels = GMM_final.predict(self.embedding)
 
         if GMM_final.converged_:
             logging.info('GMM converged.')
         else:
             logging.warning('GMM did not converge. Please check you input configuration.')
         
-        results_clustered = pd.DataFrame({'cluster': labels_final})
-
         logging.info('Calculating CVIs')
-        results_real = calculate_CVIs(self.embedding, labels=labels_final, Random = False)
+        results_real = calculate_CVIs(self.embedding, labels=labels, Random = False)
         results_random = calculate_CVIs(self.embedding, labels=None, num_clusters=K, Random = True)
+        
         # concatenate DataFrames along columns axis
         results_CVIs = pd.concat([results_real, results_random], axis=1)
-        
         results_CVIs.to_csv(f'results/{self.name}/{self.name}_CVIs.csv', index=True, header=True)
 
-        return results_clustered, results_CVIs, GMM_final
+        return labels, results_CVIs, GMM_final
       
     def _kmeans_final(self, K: int= 3):
         """
@@ -222,27 +220,25 @@ class Clustering():
         random_state (int): The random seed to use.
 
         Returns:
-            data_clustered (pandas.DataFrame): The input data with an additional 'cluster' column.
+            laebls (np.ndarray): Cluster labels
         """
         random_state = self.settings.random_state
 
         KMeans_final = KMeans(n_clusters=K, init='k-means++', random_state=random_state)
         KMeans_final.fit(self.embedding)
-        labels_final = KMeans_final.predict(self.embedding)
+        labels = KMeans_final.predict(self.embedding)
 
         if KMeans_final.n_iter_ < KMeans_final.max_iter:
             logging.info('K-Means converged.')
         else:
             logging.warning('K-Means did not converge. Please check your input configuration.')
 
-        results_clustered = pd.DataFrame({'cluster': labels_final})
-
         logging.info('Calculating CVIs')
-        results_real = calculate_CVIs(self.embedding, labels=labels_final, Random = False)
+        results_real = calculate_CVIs(self.embedding, labels=labels, Random = False)
         results_random = calculate_CVIs(self.embedding, labels=None, num_clusters=K, Random = True)
+        
         # concatenate DataFrames along columns axis
         results_CVIs = pd.concat([results_real, results_random], axis=1)
-        
         results_CVIs.to_csv(f'results/{self.name}/{self.name}_CVIs.csv', index=True, header=True)
 
-        return results_clustered, results_CVIs, KMeans_final
+        return labels, results_CVIs, KMeans_final

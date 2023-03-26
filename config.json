@@ -10,14 +10,14 @@
     "reducing": {
         "reducer":"umap",
         "n_components": 2,
-        "n_neighbors": false,
+        "n_neighbors": 5,
         "min_dist": 0.0,
         "metric": "euclidean",
         "init": "spectral",
         "densemap": false
     },
     "clustering": {
-        "method":"gmm",
+        "method":"kmeans",
         "max_n_clusters": 15,
         "n_init": 5,
         "init_params": "kmeans",

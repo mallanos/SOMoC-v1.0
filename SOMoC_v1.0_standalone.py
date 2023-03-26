@@ -63,9 +63,9 @@ def main():
     embedding = reducer.reduce()
    
     clusterer = Clustering(name, embedding, settings)
-    K, results_loop, data_clustered, results_CVIs, clustering_model = clusterer.cluster()
+    K, results_loop, labels, results_CVIs, clustering_model = clusterer.cluster()
     
-    merge_data(name, data, data_clustered)
+    merge_data(name, data, labels)
     
     plotter = Plotting(name)
 
