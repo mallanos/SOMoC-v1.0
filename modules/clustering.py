@@ -53,6 +53,63 @@ def calculate_CVIs(embedding: np.ndarray, metric:str, labels: List, Random: bool
 
     return results.round(3)
 
+def estimate_optimal_clusters(temp: Dict[int, float], method: str='max') -> int:
+    """
+    Estimates the optimal number of clusters using the elbow method, maximum silhouette score, or second order derivative.
+
+    Parameters:
+    temp (Dict[int, float]): A dictionary containing the silhouette scores for each clustering method and each number of clusters.
+    method (str): The method to use for estimating the optimal number of clusters. Can be 'elbow' (default), 'max', or 'second_order'.
+
+    Returns:
+    The estimated optimal number of clusters.
+    """
+    if method == 'elbow':
+        logging.info('Finding the optimal number of clusters using the elbow method...')
+
+        # Calculate differences between successive silhouette scores
+        diffs = {}
+        for k in range(2, len(temp)):
+            diffs[k] = np.diff([temp[i] for i in range(2, k+1)])
+
+        # Calculate ratio of differences and identify elbow point
+        elbow_points = {}
+        for k, v in diffs.items():
+            if len(v) > 1:
+                ratios = v[1:] / v[:-1]
+                elbow_points[k] = np.argmax(ratios) + 2
+            else:
+                elbow_points[k] = k
+
+        # Take average of elbow points across methods
+        elbow_idx = int(round(np.mean(list(elbow_points.values()))))
+
+    elif method == 'max':
+        logging.info('Finding the optimal number of clusters using maximum method...')
+        elbow_idx = max(temp, key=temp.get)
+        # elbow_idx = max(temp.items(), key=lambda x: x[1][1])[0]
+
+    elif method == 'second_order':
+        logging.info('Finding the optimal number of clusters using second order derivative...')
+
+        # Calculate differences between successive silhouette scores
+        diffs = {}
+        for k in range(2, len(temp)):
+            diffs[k] = np.diff([temp[i] for i in range(2, k+1)])
+
+        # Calculate second order differences and identify elbow point
+        second_diffs = {}
+        for k, v in diffs.items():
+            if len(v) > 2:
+                second_diffs[k] = np.diff(v, n=2)
+            else:
+                second_diffs[k] = [0]
+
+        elbow_idx = max(second_diffs, key=second_diffs.get)
+
+    logging.info(f"The estimated optimal number of clusters is: {elbow_idx}")
+    return elbow_idx
+
 class Clustering():
 
     def __init__(self, name: str, embedding: np.ndarray, settings) -> None:
@@ -110,7 +167,7 @@ class Clustering():
         iterations = self.settings.clustering['iterations']
         random_state = self.settings.random_state
 
-        temp = {i: [] for i in range(max_n_clusters+1)}  # pre-allocate the dictionary
+        temp = {i: [] for i in range(2,max_n_clusters+1)}  # pre-allocate the dictionary
 
         for n in tqdm(range(2, max_n_clusters+1), desc='Optimizing the number of clusters'):
             temp_sil = [None] * iterations # pre-allocate the list
@@ -123,9 +180,9 @@ class Clustering():
 
         results_loop = pd.DataFrame.from_dict(
             temp, orient='index', columns=['Clusters','Silhouette', 'sil_stdv']).dropna()
-        results_loop = results_loop.astype({"Clusters": int})
-        K_loop = results_loop.sort_values(['Silhouette'], ascending=False).index[0] # Get max Sil K      
-        return results_loop, int(K_loop)
+        optimal_n_clusters = estimate_optimal_clusters(temp)
+        
+        return results_loop, int(optimal_n_clusters)
 
     def _gmm_loop(self) -> Tuple[pd.DataFrame, int]:
         """
@@ -152,11 +209,9 @@ class Clustering():
 
         results_loop = pd.DataFrame.from_dict(
             temp, orient='index', columns=['Clusters','Silhouette', 'sil_stdv']).dropna()
-        results_loop = results_loop.astype({"Clusters": int})
-        results_sorted = results_loop.sort_values(['Silhouette'], ascending=False)
-        K_loop = results_sorted.index[0]  # Get max Sil K
+        optimal_n_clusters = estimate_optimal_clusters(temp)
         
-        return results_loop, int(K_loop)
+        return results_loop, int(optimal_n_clusters)
 
     def _gmm_final(self, K: int= 3):
         

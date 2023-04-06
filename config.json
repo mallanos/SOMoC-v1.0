@@ -9,7 +9,7 @@
     },
     "reducing": {
         "reducer":"umap",
-        "n_components": 2,
+        "n_components": 3,
         "n_neighbors": 10,
         "min_dist": 0.0,
         "metric": "jaccard",
@@ -18,7 +18,7 @@
     },
     "clustering": {
         "method":"gmm",
-        "max_n_clusters": 15,
+        "max_n_clusters": 10,
         "n_init": 5,
         "init_params": "kmeans",
         "n_iter": 5,
