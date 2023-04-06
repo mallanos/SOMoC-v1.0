@@ -52,7 +52,6 @@ def plot_GMM(name, embedding, gmm, shadow=True):
     
     plt.savefig(f'results/{name}/scatterplot2D.png')
 
-
 def scatterplot_2D(name: str, model: Any, embedding: np.ndarray) -> None:
     """
     Create a 2D scatter plot of embeddings with colors corresponding to cluster labels.
@@ -101,41 +100,13 @@ def scatterplot_2D(name: str, model: Any, embedding: np.ndarray) -> None:
     elif model_name == 'KMeans':
         centers = model.cluster_centers_
         ax.scatter(centers[:, 0], centers[:, 1], c="r", s=30, marker='x')
-
-        # CODE TO GET CONTOUR PLOTS - NOT USED
-        # Get the means and covariances of the GMM model
-        # means = model.means_
-        # covariances = model.covariances_
-
-        # # Define the range of x and y values based on the limits of the embedding
-        # xmin, xmax = np.min(embedding[:,0]), np.max(embedding[:,0])
-        # ymin, ymax = np.min(embedding[:,1]), np.max(embedding[:,1])
-        # x = np.linspace(xmin, xmax, 100)
-        # y = np.linspace(ymin, ymax, 100)
-        # X, Y = np.meshgrid(x, y)
-        # pos = np.empty(X.shape + (2,))
-        # pos[:, :, 0] = X
-        # pos[:, :, 1] = Y
-
-        # # Evaluate the PDF of the GMM model at each point
-        # Z = np.zeros(X.shape)
-        # for k in range(n_clusters):
-        #     rv = multivariate_normal(means[k], covariances[k])
-        #     Z += model.weights_[k] * rv.pdf(pos)
-
-        # # Create the contour plot
-        # contour = ax.contour(X, Y, Z)
-        # ax.clabel(contour, inline=True, fontsize=8)
-        # ax.set_xlim([xmin, xmax])
-        # ax.set_ylim([ymin, ymax])
-
+        
     plt.title(f"{model_name} clustering with K={n_clusters}", fontsize=20)
     plt.tick_params(labelsize=10)
     plt.xlabel("Component 1", fontsize=15);plt.ylabel("Component 2", fontsize=15)
     plt.autoscale()
     plt.tight_layout()
     plt.savefig(f'results/{name}/scatterplot2D.png')
-
 
 class Plotting:
     def __init__(self, name: str):
@@ -257,3 +228,30 @@ class Plotting:
         if (embedding.shape[1] == 2):
             logging.info('Generating 2D scatterplot plot')
             scatterplot_2D(self.name, model, embedding)
+
+        # CODE TO GET CONTOUR PLOTS in GMM - NOT USED
+        # Get the means and covariances of the GMM model
+        # means = model.means_
+        # covariances = model.covariances_
+
+        # # Define the range of x and y values based on the limits of the embedding
+        # xmin, xmax = np.min(embedding[:,0]), np.max(embedding[:,0])
+        # ymin, ymax = np.min(embedding[:,1]), np.max(embedding[:,1])
+        # x = np.linspace(xmin, xmax, 100)
+        # y = np.linspace(ymin, ymax, 100)
+        # X, Y = np.meshgrid(x, y)
+        # pos = np.empty(X.shape + (2,))
+        # pos[:, :, 0] = X
+        # pos[:, :, 1] = Y
+
+        # # Evaluate the PDF of the GMM model at each point
+        # Z = np.zeros(X.shape)
+        # for k in range(n_clusters):
+        #     rv = multivariate_normal(means[k], covariances[k])
+        #     Z += model.weights_[k] * rv.pdf(pos)
+
+        # # Create the contour plot
+        # contour = ax.contour(X, Y, Z)
+        # ax.clabel(contour, inline=True, fontsize=8)
+        # ax.set_xlim([xmin, xmax])
+        # ax.set_ylim([ymin, ymax])

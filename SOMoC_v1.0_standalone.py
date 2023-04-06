@@ -17,7 +17,6 @@ from modules.encoding import *
 from modules.reducing import *
 
 # TODO a function to save within data class which have access to name
-# TODO smiles_to_mol output a list not a df
 ####################################### SOMoC main ########################################
 ###########################################################################################
 def main():
@@ -56,8 +55,8 @@ def main():
 
     # Calculate Fingerprints
     encoder = Encoding(data, settings)
-    X = encoder.fingerprints_calculator() 
-    
+    X = encoder.fingerprints_calculator()
+
     # Reduce feature space
     reducer = Reducing(X, settings)
     embedding = reducer.reduce()

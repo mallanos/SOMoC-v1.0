@@ -7,9 +7,10 @@ from typing import List, Tuple, Union, Optional, Dict, Any
 from sklearn.mixture import GaussianMixture as GMM
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score, pairwise_distances
+from sklearn.metrics.pairwise import distance_metrics
 from validclust import dunn
 
-def calculate_CVIs(embedding: np.ndarray, labels: List, Random: bool = True, num_iterations: int = 500, num_clusters: int = 3):
+def calculate_CVIs(embedding: np.ndarray, metric:str, labels: List, Random: bool = True, num_iterations: int = 5, num_clusters: int = 3):
 
     """
     Calculate all CVIs for real or random clustering
@@ -17,55 +18,37 @@ def calculate_CVIs(embedding: np.ndarray, labels: List, Random: bool = True, num
     Parameters:
     embeddings (np.ndarray): An array of embeddings to cluster.
     labels (List): List of cluster labels.
-    
+
     Returns: A nested dictionary containing the all CVIs
     """
 
     results = {}
+    
+    dist_dunn = pairwise_distances(embedding)
 
     if Random:
-        SILs = np.zeros(num_iterations)
-        DBs = np.zeros(num_iterations)
-        CHs = np.zeros(num_iterations)
-        DUNNs = np.zeros(num_iterations)
+        SILs, DBs, CHs, DUNNs = np.zeros(num_iterations), np.zeros(num_iterations), np.zeros(num_iterations), np.zeros(num_iterations)
 
         for i in range(num_iterations):
             np.random.seed(i)
             random_clusters = np.random.randint(num_clusters, size=len(embedding))
-            silhouette_random = silhouette_score(embedding, random_clusters, metric='euclidean')
-            SILs[i] = silhouette_random
-            db_random = davies_bouldin_score(embedding, random_clusters)
-            DBs[i] = db_random
-            ch_random = calinski_harabasz_score(embedding, random_clusters)
-            CHs[i] = ch_random
-            dist_dunn = pairwise_distances(embedding)
-            dunn_random = dunn(dist_dunn, random_clusters)
-            DUNNs[i] = dunn_random
+            SILs[i], DBs[i], CHs[i], DUNNs[i] = silhouette_score(embedding, random_clusters, metric=metric), davies_bouldin_score(embedding, random_clusters), calinski_harabasz_score(embedding, random_clusters), dunn(dist_dunn, random_clusters)
 
-        sil_random = np.mean(SILs)
-        sil_random_st = np.std(SILs)
-        db_random = np.mean(DBs)
-        db_random_st = np.std(DBs)
-        ch_random = np.mean(CHs)
-        ch_random_st = np.std(CHs)
-        dunn_random = np.mean(DUNNs)
-        dunn_random_st = np.std(DUNNs)
+        random_means = np.mean([SILs, DBs, CHs, DUNNs], axis=1)
+        random_sds = np.std([SILs, DBs, CHs, DUNNs], axis=1)
 
-        random_means = [sil_random, db_random, ch_random, dunn_random]
-        random_sds = [sil_random_st, db_random_st, ch_random_st, dunn_random_st]
-        
         results = pd.DataFrame({'Random_mean': random_means,'Random_std':random_sds}, index=['silhouette','davies_bouldin','calinski_harabasz','dunn'])
 
     else:
         assert len(embedding) == len(labels), "Length of embeddings and labels must match"
         assert embedding.ndim == 2, "Embeddings must be a 2D array"
 
-        results['SOMoC'] = {
-            'silhouette': silhouette_score(embedding, labels, metric='euclidean'),
-            'davies_bouldin': davies_bouldin_score(embedding, labels),
-            'calinski_harabasz': calinski_harabasz_score(embedding, labels),
-            'dunn': dunn(pairwise_distances(embedding), labels)
-        }
+        SOMoC = {'silhouette': silhouette_score(embedding, labels, metric=metric),
+                 'davies_bouldin': davies_bouldin_score(embedding, labels),
+                 'calinski_harabasz': calinski_harabasz_score(embedding, labels),
+                 'dunn': dunn(dist_dunn, labels)}
+
+        results['SOMoC'] = SOMoC
         results = pd.DataFrame.from_dict(results)
 
     return results.round(3)
@@ -76,6 +59,13 @@ class Clustering():
         self.name = name
         self.embedding = embedding
         self.settings = settings
+        allowed_metrics = list(distance_metrics().keys())
+        if self.settings.reducing['metric'] not in allowed_metrics:
+            self.metric = 'cosine'
+            logging.warning(f"{self.settings.reducing['metric']} is not available in Sklearn pairwise distances for Silhouette calculation, using Cosine metric instead !")
+            # raise ValueError(f"Metric should be one of: {allowed_metrics}")
+        else:
+            self.metric = self.settings.reducing['metric']
 
     def cluster(self):
         method = self.settings.clustering['method']
@@ -128,7 +118,7 @@ class Clustering():
                 kmeans = KMeans(n_clusters=n,init='k-means++', random_state=x).fit(self.embedding)
                 labels = kmeans.predict(self.embedding)
                 temp_sil[x] = silhouette_score(
-                    self.embedding, labels, metric='euclidean')
+                    self.embedding, labels, metric=self.metric)
             temp[n] = [int(n),np.mean(temp_sil), np.std(temp_sil)]
 
         results_loop = pd.DataFrame.from_dict(
@@ -157,7 +147,7 @@ class Clustering():
                         warm_start=warm_start, random_state=x, verbose=0).fit(self.embedding)
                 labels = gmm.predict(self.embedding)
                 temp_sil[x] = silhouette_score(
-                    self.embedding, labels, metric='euclidean')
+                    self.embedding, labels, metric=self.metric)
             temp[n] = [int(n),np.mean(temp_sil), np.std(temp_sil)]
 
         results_loop = pd.DataFrame.from_dict(
@@ -201,8 +191,8 @@ class Clustering():
             logging.warning('GMM did not converge. Please check you input configuration.')
         
         logging.info('Calculating CVIs')
-        results_real = calculate_CVIs(self.embedding, labels=labels, Random = False)
-        results_random = calculate_CVIs(self.embedding, labels=None, num_clusters=K, Random = True)
+        results_real = calculate_CVIs(self.embedding, self.metric,labels=labels, Random = False)
+        results_random = calculate_CVIs(self.embedding, self.metric, labels=None, num_clusters=K, Random = True)
         
         # concatenate DataFrames along columns axis
         results_CVIs = pd.concat([results_real, results_random], axis=1)
@@ -234,8 +224,8 @@ class Clustering():
             logging.warning('K-Means did not converge. Please check your input configuration.')
 
         logging.info('Calculating CVIs')
-        results_real = calculate_CVIs(self.embedding, labels=labels, Random = False)
-        results_random = calculate_CVIs(self.embedding, labels=None, num_clusters=K, Random = True)
+        results_real = calculate_CVIs(self.embedding, self.metric, labels=labels, Random = False)
+        results_random = calculate_CVIs(self.embedding, self.metric, labels=None, num_clusters=K, Random = True)
         
         # concatenate DataFrames along columns axis
         results_CVIs = pd.concat([results_real, results_random], axis=1)
