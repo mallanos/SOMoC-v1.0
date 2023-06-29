@@ -137,7 +137,7 @@ class Plotting:
 
         fig, ax1 = plt.subplots(figsize=(14, 6))
 
-        sil = sns.lineplot(data=results_loop, x='Clusters', y="Silhouette", color='b', ci=None, estimator=np.median,
+        sil = sns.lineplot(data=results_loop, x='Clusters', y="Silhouette", color='b', errorbar=None, estimator=np.median,
                         ax=ax1)
 
         sil_error = ax1.errorbar(x=results_loop['Clusters'], y=results_loop['Silhouette'], yerr=results_loop['sil_stdv'],
