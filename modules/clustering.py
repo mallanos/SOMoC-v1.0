@@ -67,7 +67,7 @@ def estimate_optimal_clusters(temp: Dict[int, float], method: str='max') -> int:
     if method == 'elbow':
         logging.info('Finding the optimal number of clusters using the elbow method...')
 
-        # Calculate differences between successive silhouette scores
+        # Calculate differences between successive metric scores
         diffs = {}
         for k in range(2, len(temp)):
             diffs[k] = np.diff([temp[i] for i in range(2, k+1)])
@@ -92,7 +92,7 @@ def estimate_optimal_clusters(temp: Dict[int, float], method: str='max') -> int:
     elif method == 'second_order':
         logging.info('Finding the optimal number of clusters using second order derivative...')
 
-        # Calculate differences between successive silhouette scores
+        # Calculate differences between successive metric scores
         diffs = {}
         for k in range(2, len(temp)):
             diffs[k] = np.diff([temp[i] for i in range(2, k+1)])
@@ -108,12 +108,13 @@ def estimate_optimal_clusters(temp: Dict[int, float], method: str='max') -> int:
         elbow_idx = max(second_diffs, key=second_diffs.get)
 
     logging.info(f"The estimated optimal number of clusters is: {elbow_idx}")
+    
     return elbow_idx
 
 class Clustering():
 
-    def __init__(self, name: str, embedding: np.ndarray, settings) -> None:
-        self.name = name
+    def __init__(self, dataset_name: str, embedding: np.ndarray, settings) -> None:
+        self.dataset_name = dataset_name
         self.embedding = embedding
         self.settings = settings
         allowed_metrics = list(distance_metrics().keys())
@@ -123,26 +124,31 @@ class Clustering():
             # raise ValueError(f"Metric should be one of: {allowed_metrics}")
         else:
             self.metric = self.settings.reducing['metric']
+        
+        self.random_state = self.settings.random_state
 
     def cluster(self):
-        method = self.settings.clustering['method']
-        max_n_clusters = self.settings.clustering['max_n_clusters']
-        n_iter = self.settings.clustering['n_iter']
-        n_init = self.settings.clustering['n_init']
-        covariance_type = self.settings.clustering['covariance_type']
-        random_state = self.settings.random_state
+        self.clustering_method = self.settings.clustering['clustering_method']
+        self.max_n_clusters = self.settings.clustering['max_n_clusters']
+        self.iterations = self.settings.clustering['iterations']
+        self.gmm_init = self.settings.clustering['gmm_init']
+        self.gmm_init_params = self.settings.clustering['gmm_init_params']
+        self.gmm_covariance_type = self.settings.clustering['gmm_covariance_type']
+        self.gmm_warm_start = self.settings.clustering['gmm_warm_start']
+
         K = self.settings.optimal_K
 
         # Determine the optimal K using the clustering loop if K is not specified
         if K == False:
             logging.info(f"Finding the optimal K...")
-            if method == 'kmeans':
+            if self.clustering_method == 'kmeans':
                 results_loop, K_loop = self._kmeans_loop()
-            elif method == 'gmm':
+            elif self.clustering_method == 'gmm':
                 results_loop, K_loop = self._gmm_loop()
             else:
-                logging.error("Invalid method. Must be 'gmm' or 'kmeans'.")
-                raise ValueError("Invalid method. Must be 'gmm' or 'kmeans'.")
+                logging.warning("Invalid clustering method. Defaulting to 'gmm'.")
+                self.clustering_method = 'gmm'
+                results_loop, K_loop = self._gmm_loop()
             K = K_loop
         else:
             results_loop = None
@@ -150,12 +156,16 @@ class Clustering():
 
         # Perform final clustering
         logging.info(f'Running final clustering with K = {K}...')
-        if method == 'kmeans':
+
+        if self.clustering_method == 'gmm':
+            data_clustered, results_CVIs, model = self._gmm_final(K)
+        elif self.clustering_method == 'kmeans':
             data_clustered, results_CVIs, model = self._kmeans_final(K)
         else:
+            self.clustering_method = 'gmm'
             data_clustered, results_CVIs, model = self._gmm_final(K)
-
-        results_CVIs.to_csv(f'results/{self.name}/{self.name}_CVIs.csv', index=True, header=True)
+            
+        results_CVIs.to_csv(f'results/{self.dataset_name}/{self.dataset_name}_CVIs.csv', index=True, header=True)
 
         return K, results_loop, data_clustered, results_CVIs, model
 
@@ -163,15 +173,11 @@ class Clustering():
         """
         Runs KMeans clustering for a range of K values and returns the K value which maximizes the silhouette score.
         """
-        max_n_clusters = self.settings.clustering['max_n_clusters']
-        iterations = self.settings.clustering['iterations']
-        random_state = self.settings.random_state
+        temp = {i: [] for i in range(2,self.max_n_clusters+1)}  # pre-allocate the dictionary
 
-        temp = {i: [] for i in range(2,max_n_clusters+1)}  # pre-allocate the dictionary
-
-        for n in tqdm(range(2, max_n_clusters+1), desc='Optimizing the number of clusters'):
-            temp_sil = [None] * iterations # pre-allocate the list
-            for x in range(iterations):
+        for n in tqdm(range(2, self.max_n_clusters+1), desc='Optimizing the number of clusters'):
+            temp_sil = [None] * self.iterations # pre-allocate the list
+            for x in range(self.iterations):
                 kmeans = KMeans(n_clusters=n,init='k-means++', random_state=x).fit(self.embedding)
                 labels = kmeans.predict(self.embedding)
                 temp_sil[x] = silhouette_score(
@@ -188,20 +194,13 @@ class Clustering():
         """
         Runs GMM clustering for a range of K values and returns the K value which maximizes the silhouette score.
         """
-        max_n_clusters = self.settings.clustering['max_n_clusters']
-        n_iter = self.settings.clustering['n_iter']
-        n_init = self.settings.clustering['n_init']
-        init_params = self.settings.clustering['init_params']
-        covariance_type = self.settings.clustering['covariance_type']
-        warm_start = self.settings.clustering['warm_start']
+        temp = {i: [] for i in range(self.max_n_clusters+1)}  # pre-allocate the dictionary
 
-        temp = {i: [] for i in range(max_n_clusters+1)}  # pre-allocate the dictionary
-
-        for n in tqdm(range(2, max_n_clusters+1), desc='Optimizing the number of clusters'):
-            temp_sil = [None] * n_iter # pre-allocate the list
-            for x in range(n_iter):
-                gmm = GMM(n, n_init=n_init, init_params=init_params, covariance_type=covariance_type,
-                        warm_start=warm_start, random_state=x, verbose=0).fit(self.embedding)
+        for n in tqdm(range(2, self.max_n_clusters+1), desc='Optimizing the number of clusters'):
+            temp_sil = [None] * self.iterations # pre-allocate the list
+            for x in range(self.iterations):
+                gmm = GMM(n, n_init=self.gmm_init, init_params=self.gmm_init_params, covariance_type=self.gmm_covariance_type,
+                        warm_start=self.gmm_warm_start, random_state=x, verbose=0).fit(self.embedding)
                 labels = gmm.predict(self.embedding)
                 temp_sil[x] = silhouette_score(
                     self.embedding, labels, metric=self.metric)
@@ -229,14 +228,9 @@ class Clustering():
         Returns:
             laebls (np.ndarray): Cluster labels
         """
-        n_init = self.settings.clustering['n_init']
-        init_params = self.settings.clustering['init_params']
-        covariance_type = self.settings.clustering['covariance_type']
-        warm_start = self.settings.clustering['warm_start']
-        random_state = self.settings.random_state
 
-        GMM_final = GMM(K, n_init=n_init, init_params=init_params, warm_start=warm_start,
-                        covariance_type=covariance_type, random_state=random_state, verbose=0)
+        GMM_final = GMM(K, n_init=self.gmm_init, init_params=self.gmm_init_params, warm_start=self.gmm_warm_start,
+                        covariance_type=self.gmm_covariance_type, random_state=self.random_state, verbose=0)
         GMM_final.fit(self.embedding)
         labels = GMM_final.predict(self.embedding)
 
@@ -251,7 +245,7 @@ class Clustering():
         
         # concatenate DataFrames along columns axis
         results_CVIs = pd.concat([results_real, results_random], axis=1)
-        results_CVIs.to_csv(f'results/{self.name}/{self.name}_CVIs.csv', index=True, header=True)
+        results_CVIs.to_csv(f'results/{self.dataset_name}/{self.dataset_name}_CVIs.csv', index=True, header=True)
 
         return labels, results_CVIs, GMM_final
       
@@ -267,9 +261,8 @@ class Clustering():
         Returns:
             laebls (np.ndarray): Cluster labels
         """
-        random_state = self.settings.random_state
 
-        KMeans_final = KMeans(n_clusters=K, init='k-means++', random_state=random_state)
+        KMeans_final = KMeans(n_clusters=K, init='k-means++', random_state=self.random_state)
         KMeans_final.fit(self.embedding)
         labels = KMeans_final.predict(self.embedding)
 
@@ -284,6 +277,6 @@ class Clustering():
         
         # concatenate DataFrames along columns axis
         results_CVIs = pd.concat([results_real, results_random], axis=1)
-        results_CVIs.to_csv(f'results/{self.name}/{self.name}_CVIs.csv', index=True, header=True)
+        results_CVIs.to_csv(f'results/{self.dataset_name}/{self.dataset_name}_CVIs.csv', index=True, header=True)
 
         return labels, results_CVIs, KMeans_final

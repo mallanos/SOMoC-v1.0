@@ -17,13 +17,13 @@
         "densemap": false
     },
     "clustering": {
-        "method":"gmm",
+        "clustering_method":"gmm",
         "max_n_clusters": 10,
-        "n_init": 5,
-        "init_params": "kmeans",
-        "n_iter": 5,
-        "covariance_type": "full",
-        "warm_start": false
+        "iterations": 5,
+        "gmm_init": 5,
+        "gmm_init_params": "kmeans",
+        "gmm_covariance_type": "full",
+        "gmm_warm_start": false
     },
     "CVIs": {
         "calinski_harabasz": 5450.319,

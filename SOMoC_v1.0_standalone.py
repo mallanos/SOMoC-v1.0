@@ -45,10 +45,10 @@ def main():
     data_handler = LoadData(args.input) 
 
     # Get the smiles
-    data_raw, name = data_handler.parse_smiles_csv() 
+    data_raw, dataset_name = data_handler.parse_smiles_csv() 
    
     # Create output dir 
-    make_dir(f'results/{name}') 
+    make_dir(f'results/{dataset_name}') 
     
     # Convert SMILES to RDKit molecule
     data = data_handler.smiles_to_mol(data=data_raw, standardize=settings.standardize_molec)
@@ -61,12 +61,12 @@ def main():
     reducer = Reducing(X, settings)
     embedding = reducer.reduce()
    
-    clusterer = Clustering(name, embedding, settings)
+    clusterer = Clustering(dataset_name, embedding, settings)
     K, results_loop, labels, results_CVIs, clustering_model = clusterer.cluster()
     
-    merge_data(name, data, labels)
+    merge_data(dataset_name, data, labels)
     
-    plotter = Plotting(name)
+    plotter = Plotting(dataset_name)
 
     # Generate Elbow plot
     if results_loop is not None: plotter.elbow_plot_SIL(results_loop, K)
@@ -75,7 +75,7 @@ def main():
     plotter.distribution_plot(clustering_model, embedding)
 
     # Write the settings JSON file
-    settings.save_settings(name, df=results_CVIs)
+    settings.save_settings(dataset_name, df=results_CVIs)
 
     logging.info('ALL DONE !')
     logging.info(f'SOMoC run took {time.monotonic() - start_time:.3f} seconds')

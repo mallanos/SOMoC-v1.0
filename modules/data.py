@@ -31,7 +31,7 @@ def make_dir(dirName: str):
     except FileExistsError:
         pass
 
-def merge_data(name: str, data: pd.DataFrame, labels: np.ndarray) -> None:
+def merge_data(dataset_name: str, data: pd.DataFrame, labels: np.ndarray) -> None:
     """add a column with the cluster to the original dataframe"""
 
     if 'mol' in data.columns:  # Check if mol column from standardization is present
@@ -45,7 +45,7 @@ def merge_data(name: str, data: pd.DataFrame, labels: np.ndarray) -> None:
     # Concatenate the labels array to the DataFrame as a new column
     df = pd.concat([data, pd.Series(labels, name='cluster')], axis=1)
 
-    df.to_csv(f'results/{name}/{name}_Clustered.csv', index=True, header=True)
+    df.to_csv(f'results/{dataset_name}/{dataset_name}_Clustered.csv', index=True, header=True)
     
     return None
 
@@ -87,13 +87,13 @@ class Settings:
                 "densemap": False
             },
             "clustering": {
-                "method":"gmm",
+                "clustering_method":"gmm",
                 "max_n_clusters": 10,
-                "n_init": 10,
                 "iterations": 10,
-                "init_params": "kmeans",
-                "covariance_type": "diag",
-                "warm_start": False
+                "gmm_init": 10,
+                "gmm_init_params": "kmeans",
+                "gmm_covariance_type": "diag",
+                "gmm_warm_start": False
             }
         }
 
@@ -112,14 +112,14 @@ class Settings:
         for k, v in settings_dict.items():
             setattr(self, k, v)
 
-    def save_settings(self, name: str, df: pd.DataFrame = None) -> None:
+    def save_settings(self, dataset_name: str, df: pd.DataFrame = None) -> None:
 
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         logging.info('Saving run settings to JSON file.')
 
         # Create a dictionary with the settings
         settings_dict = {}
-        settings_dict["dataset"] = name
+        settings_dict["dataset_name"] = dataset_name
 
         for k, v in self.__dict__.items():
             if not k.startswith('__'):
@@ -133,7 +133,7 @@ class Settings:
                 settings_dict[k] = v
 
         # Write the dictionary to a JSON file
-        with open(f'results/{name}/{name}_{timestamp}.json', 'w') as f:
+        with open(f'results/{dataset_name}/{dataset_name}_{timestamp}.json', 'w') as f:
             rapidjson.dump(settings_dict, f, indent=4)
 
 class LoadData:
@@ -151,11 +151,11 @@ class LoadData:
         with file_path.open() as f:
             data = pd.read_csv(f, delimiter=',', header='infer')
 
-        name = get_file_name(file_path)
-        logging.info(f'Loading {name} dataset')
-        logging.info(f'{len(data)} Smiles loaded..')
+        dataset_name = get_file_name(file_path)
+        logging.info(f'Loading {dataset_name} dataset')
+        logging.info(f'{len(dataset_name)} Smiles loaded..')
 
-        return data, name
+        return data, dataset_name
 
     def smiles_to_mol(self, data: pd.DataFrame, standardize: bool=False) -> pd.DataFrame:
         """Standardize molecules using the MolVS package https://molvs.readthedocs.io/en/latest/.
