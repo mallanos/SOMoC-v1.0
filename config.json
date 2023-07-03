@@ -18,10 +18,10 @@
     },
     "clustering": {
         "clustering_method":"gmm",
-        "max_n_clusters": 10,
-        "iterations": 5,
+        "max_n_clusters": 20,
+        "iterations": 3,
         "gmm_init": 5,
-        "gmm_init_params": "kmeans",
+        "gmm_init_params": "k-means++",
         "gmm_covariance_type": "full",
         "gmm_warm_start": false
     },
