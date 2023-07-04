@@ -16,7 +16,6 @@ from modules.clustering import *
 from modules.encoding import *
 from modules.reducing import *
 
-# TODO a function to save within data class which have access to name
 ####################################### SOMoC main ########################################
 ###########################################################################################
 def main():

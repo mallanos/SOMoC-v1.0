@@ -2,6 +2,7 @@
     "random_state": 10,
     "standardize_molec": true,
     "optimal_K": false,
+    "optimize_metric": "all",
     "encoding": {
         "fingerprint_type": "estate",
         "radius": 2,

@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import distance_metrics
 from validclust import dunn, cop
 from scipy.stats import multivariate_normal
 
-def calculate_CVIs(embedding: np.ndarray, metric: str, labels: List, Random: bool = True, num_iterations: int = 5, num_clusters: int = 3):
+def calculate_CVIs(embedding: np.ndarray, sil_metric: str, labels: List, Random: bool = True, num_iterations: int = 5, num_clusters: int = 3):
     """
     Calculate all CVIs for real or random clustering
 
@@ -30,7 +30,7 @@ def calculate_CVIs(embedding: np.ndarray, metric: str, labels: List, Random: boo
         for i in range(num_iterations):
             np.random.seed(i)
             random_clusters = np.random.randint(num_clusters, size=len(embedding))
-            SILs[i] = silhouette_score(embedding, random_clusters, metric=metric)
+            SILs[i] = silhouette_score(embedding, random_clusters, metric=sil_metric)
             DBs[i] = davies_bouldin_score(embedding, random_clusters)
             CHs[i] = calinski_harabasz_score(embedding, random_clusters)
             DUNNs[i] = dunn(distance_matrix, random_clusters)
@@ -46,7 +46,7 @@ def calculate_CVIs(embedding: np.ndarray, metric: str, labels: List, Random: boo
         assert len(embedding) == len(labels), "Length of embeddings and labels must match"
         assert embedding.ndim == 2, "Embeddings must be a 2D array"
 
-        SOMoC = {'silhouette': silhouette_score(embedding, labels, metric=metric),
+        SOMoC = {'silhouette': silhouette_score(embedding, labels, metric=sil_metric),
                  'davies_bouldin': davies_bouldin_score(embedding, labels),
                  'calinski_harabasz': calinski_harabasz_score(embedding, labels),
                  'dunn': dunn(distance_matrix, labels),
@@ -57,7 +57,6 @@ def calculate_CVIs(embedding: np.ndarray, metric: str, labels: List, Random: boo
         results = pd.DataFrame.from_dict(results)
 
     return results.round(3)
-
 
 def calculate_BIC(embedding: np.ndarray, labels: List):
     """
@@ -106,50 +105,6 @@ def calculate_log_likelihood(embedding: np.ndarray, labels: List, num_clusters: 
         log_likelihood += np.sum(cluster_log_likelihood)
 
     return log_likelihood
-
-
-# def calculate_CVIs(embedding: np.ndarray, metric:str, labels: List, Random: bool = True, num_iterations: int = 5, num_clusters: int = 3):
-
-#     """
-#     Calculate all CVIs for real or random clustering
-
-#     Parameters:
-#     embeddings (np.ndarray): An array of embeddings to cluster.
-#     labels (List): List of cluster labels.
-
-#     Returns: A nested dictionary containing the all CVIs
-#     """
-
-#     results = {}
-    
-#     dist_dunn = pairwise_distances(embedding)
-
-#     if Random:
-#         SILs, DBs, CHs, DUNNs = np.zeros(num_iterations), np.zeros(num_iterations), np.zeros(num_iterations), np.zeros(num_iterations)
-
-#         for i in range(num_iterations):
-#             np.random.seed(i)
-#             random_clusters = np.random.randint(num_clusters, size=len(embedding))
-#             SILs[i], DBs[i], CHs[i], DUNNs[i] = silhouette_score(embedding, random_clusters, metric=metric), davies_bouldin_score(embedding, random_clusters), calinski_harabasz_score(embedding, random_clusters), dunn(dist_dunn, random_clusters)
-
-#         random_means = np.mean([SILs, DBs, CHs, DUNNs], axis=1)
-#         random_sds = np.std([SILs, DBs, CHs, DUNNs], axis=1)
-
-#         results = pd.DataFrame({'Random_mean': random_means,'Random_std':random_sds}, index=['silhouette','davies_bouldin','calinski_harabasz','dunn'])
-
-#     else:
-#         assert len(embedding) == len(labels), "Length of embeddings and labels must match"
-#         assert embedding.ndim == 2, "Embeddings must be a 2D array"
-
-#         SOMoC = {'silhouette': silhouette_score(embedding, labels, metric=metric),
-#                  'davies_bouldin': davies_bouldin_score(embedding, labels),
-#                  'calinski_harabasz': calinski_harabasz_score(embedding, labels),
-#                  'dunn': dunn(dist_dunn, labels)}
-
-#         results['SOMoC'] = SOMoC
-#         results = pd.DataFrame.from_dict(results)
-
-#     return results.round(3)
 
 def estimate_optimal_clusters(temp: Dict[int, float], method: str='max') -> int:
     """
@@ -286,26 +241,29 @@ class Clustering():
         optimal_n_clusters = estimate_optimal_clusters(temp)
         
         return results_loop, int(optimal_n_clusters)
-
+    
     def _gmm_loop(self) -> Tuple[pd.DataFrame, int]:
         """
         Runs GMM clustering for a range of K values and returns the K value which maximizes the silhouette score.
         """
-        temp = {i: [] for i in range(2, self.max_n_clusters+1)}  # pre-allocate the dictionary
+        temp_CVIs = {i: [] for i in range(2, self.max_n_clusters+1)}  # pre-allocate the dictionary
 
         for n in tqdm(range(2, self.max_n_clusters+1), desc='Optimizing the number of clusters'):
-            temp_sil = [None] * self.iterations # pre-allocate the list
+            temp_iter = [None] * self.iterations # pre-allocate the list
             for x in range(self.iterations):
                 gmm = GMM(n, n_init=self.gmm_init, init_params=self.gmm_init_params, covariance_type=self.gmm_covariance_type,
                         warm_start=self.gmm_warm_start, random_state=x, verbose=0).fit(self.embedding)
                 labels = gmm.predict(self.embedding)
-                temp_sil[x] = silhouette_score(
-                    self.embedding, labels, metric=self.metric)                
-            temp[n] = [int(n),np.mean(temp_sil), np.std(temp_sil)]
+                results_real = calculate_CVIs(self.embedding, self.metric, labels=labels, Random = False)
+                temp_iter[x] = results_real
+            temp_CVIs[n] = temp_iter
+        
+        print(temp_CVIs)                
+        pd.DataFrame(temp_CVIs).to_csv('prueba.csv')
 
-        results_loop = pd.DataFrame.from_dict(
-            temp, orient='index', columns=['Clusters','Silhouette', 'sil_stdv']).dropna()
-        optimal_n_clusters = estimate_optimal_clusters(temp, method='max')
+        # results_loop = pd.DataFrame.from_dict(
+        #     temp_CVIs, orient='index', columns=['Clusters','Silhouette', 'sil_stdv']).dropna()
+        # optimal_n_clusters = estimate_optimal_clusters(temp_CVIs, method='max')
         
         return results_loop, int(optimal_n_clusters)
 

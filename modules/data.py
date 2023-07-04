@@ -72,6 +72,7 @@ class Settings:
             "random_state": 10,
             "standardize_molec": False,
             "optimal_K": False,
+            "optimize_metric": "all",
             "encoding": {
                 "fingerprint_type": "estate",
                 "radius": 2,
@@ -153,7 +154,7 @@ class LoadData:
 
         dataset_name = get_file_name(file_path)
         logging.info(f'Loading {dataset_name} dataset')
-        logging.info(f'{len(dataset_name)} Smiles loaded..')
+        logging.info(f'{len(data)} Smiles loaded..')
 
         return data, dataset_name
 
