@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import distance_metrics
 from validclust import dunn, cop
 from scipy.stats import multivariate_normal
 
-def calculate_CVIs(embedding: np.ndarray, sil_metric: str, labels: List, Random: bool = True, num_iterations: int = 5, num_clusters: int = 3):
+def calculate_all_CVIs(embedding: np.ndarray, sil_metric: str, labels: List, Random: bool = True, num_iterations: int = 5, num_clusters: int = 3):
     """
     Calculate all CVIs for real or random clustering
 
@@ -25,7 +25,6 @@ def calculate_CVIs(embedding: np.ndarray, sil_metric: str, labels: List, Random:
     distance_matrix = pairwise_distances(embedding)
 
     if Random:
-        # SILs = DBs = CHs = DUNNs = COPs = BICs = np.zeros(num_iterations)
         SILs, DBs, CHs, DUNNs, COPs, BICs = np.zeros(num_iterations), np.zeros(num_iterations), np.zeros(num_iterations), np.zeros(num_iterations), np.zeros(num_iterations), np.zeros(num_iterations)
         for i in range(num_iterations):
             np.random.seed(i)
@@ -57,6 +56,36 @@ def calculate_CVIs(embedding: np.ndarray, sil_metric: str, labels: List, Random:
         results = pd.DataFrame.from_dict(results)
 
     return results.round(3)
+
+def calculate_individual_CVI(embedding: np.ndarray, labels: List, optimize_cvi: str='silhouette', sil_metric: str='cosine'):
+    """
+    Calculate individual CVIs based on user choice.
+
+    Parameters:
+    embedding (np.ndarray): An array of embeddings to cluster.
+    sil_metric (str): The distance metric to use for silhouette score.
+    labels (List): List of cluster labels.
+
+    """
+
+    if optimize_cvi == 'silhouette':
+        cvi_value = silhouette_score(embedding, labels, metric=sil_metric)
+    elif optimize_cvi == 'davies_bouldin':   
+        cvi_value = davies_bouldin_score(embedding, labels)
+    elif optimize_cvi == 'calinski_harabasz':   
+        cvi_value = calinski_harabasz_score(embedding, labels)
+    elif optimize_cvi == 'dunn':   
+        distance_matrix = pairwise_distances(embedding)
+        cvi_value = dunn(distance_matrix, labels)
+    elif optimize_cvi == 'cop':   
+        distance_matrix = pairwise_distances(embedding)
+        cvi_value = cop(embedding, distance_matrix, labels)
+    elif optimize_cvi == 'bic':   
+        cvi_value = calculate_BIC(embedding, labels)      
+    else:
+        logging.error(f"The provided CVI '{optimize_cvi}' is not supported. Check your configuration.")
+
+    return round(cvi_value, 3)
 
 def calculate_BIC(embedding: np.ndarray, labels: List):
     """
@@ -106,79 +135,84 @@ def calculate_log_likelihood(embedding: np.ndarray, labels: List, num_clusters: 
 
     return log_likelihood
 
-def estimate_optimal_clusters(temp: Dict[int, float], method: str='max') -> int:
-    """
-    Estimates the optimal number of clusters using the elbow method, maximum silhouette score, or second order derivative.
-
-    Parameters:
-    temp (Dict[int, float]): A dictionary containing the silhouette scores for each clustering method and each number of clusters.
-    method (str): The method to use for estimating the optimal number of clusters. Can be 'max' (default), 'elbow', or 'second_order'.
-
-    Returns:
-    The estimated optimal number of clusters.
-    """
-    if method == 'elbow':
-        logging.info('Finding the optimal number of clusters using the elbow method...')
-
-        # Calculate differences between successive metric scores
-        diffs = {}
-        for k in range(2, len(temp)):
-            diffs[k] = np.diff([temp[i] for i in range(2, k+1)])
-
-        # Calculate ratio of differences and identify elbow point
-        elbow_points = {}
-        for k, v in diffs.items():
-            if len(v) > 1:
-                ratios = v[1:] / v[:-1]
-                elbow_points[k] = np.argmax(ratios) + 2
-            else:
-                elbow_points[k] = k
-
-        # Take average of elbow points across methods
-        elbow_idx = int(round(np.mean(list(elbow_points.values()))))
-
-    elif method == 'max':
-        logging.info('Finding the optimal number of clusters using maximum method...')
-        elbow_idx = max(temp.items(), key=lambda x: x[1][1])[0]
-
-    # NOT WORKING PROPERLY
-    elif method == 'second_order':
-        logging.info('Finding the optimal number of clusters using second order derivative...')
-
-        # Calculate differences between successive metric scores
-        diffs = {}
-        for k in range(2, len(temp)):
-            diffs[k] = np.diff([temp[i] for i in range(2, k+1)])
-
-        # Calculate second order differences and identify elbow point
-        second_diffs = {}
-        for k, v in diffs.items():
-            if len(v) > 2:
-                second_diffs[k] = np.diff(v, n=2)
-            else:
-                second_diffs[k] = [0]
-
-        elbow_idx = max(second_diffs, key=second_diffs.get)
-
-    logging.info(f"The estimated optimal number of clusters is: {elbow_idx}")
-    
-    return elbow_idx
-
 class Clustering():
 
     def __init__(self, dataset_name: str, embedding: np.ndarray, settings) -> None:
         self.dataset_name = dataset_name
         self.embedding = embedding
         self.settings = settings
-        allowed_metrics = list(distance_metrics().keys())
+
+        allowed_metrics = list(distance_metrics().keys()) # Allowed metrics for Sil calculation
         if self.settings.reducing['metric'] not in allowed_metrics:
-            self.metric = 'cosine'
-            logging.warning(f"{self.settings.reducing['metric']} is not available in Sklearn pairwise distances for Silhouette calculation, using Cosine metric instead !")
+            logging.warning(f"{self.settings.reducing['metric']} is not available in Sklearn pairwise distances for Silhouette calculation, defaulting to Cosine!")
+            self.sil_metric = 'cosine'
         else:
-            self.metric = self.settings.reducing['metric']
+            self.sil_metric = self.settings.reducing['metric']
         
+        self.optimize_cvi = self.settings.clustering['optimize_cvi']
         self.random_state = self.settings.random_state
 
+    def estimate_optimal_clusters(self, temp: Dict[int, float], method: str='max') -> int:
+        """
+        Estimates the optimal number of clusters using the elbow method, maximum silhouette score, or second order derivative.
+
+        Parameters:
+        temp (Dict[int, float]): A dictionary containing the silhouette scores for each clustering method and each number of clusters.
+        method (str): The method to use for estimating the optimal number of clusters. Can be 'max' (default), 'elbow', or 'second_order'.
+
+        Returns:
+        The estimated optimal number of clusters.
+        """
+        if method == 'elbow':
+            logging.info('Finding the optimal number of clusters using the elbow method...')
+
+            # Calculate differences between successive metric scores
+            diffs = {}
+            for k in range(2, len(temp)):
+                diffs[k] = np.diff([temp[i] for i in range(2, k+1)])
+
+            # Calculate ratio of differences and identify elbow point
+            elbow_points = {}
+            for k, v in diffs.items():
+                if len(v) > 1:
+                    ratios = v[1:] / v[:-1]
+                    elbow_points[k] = np.argmax(ratios) + 2
+                else:
+                    elbow_points[k] = k
+
+            # Take average of elbow points across methods
+            elbow_idx = int(round(np.mean(list(elbow_points.values()))))
+
+        elif method == 'max':
+            logging.info('Finding the optimal number of clusters using maximum method...')
+            if self.optimize_cvi in ['silhouette', 'dunn', 'calinski_harabasz']:
+                elbow_idx = max(temp.items(), key=lambda x: x[1][1])[0]
+            else:
+                elbow_idx = min(temp.items(), key=lambda x: x[1][1])[0]
+
+        # TODO NOT WORKING PROPERLY
+        elif method == 'second_order':
+            logging.info('Finding the optimal number of clusters using second order derivative...')
+
+            # Calculate differences between successive metric scores
+            diffs = {}
+            for k in range(2, len(temp)):
+                diffs[k] = np.diff([temp[i] for i in range(2, k+1)])
+
+            # Calculate second order differences and identify elbow point
+            second_diffs = {}
+            for k, v in diffs.items():
+                if len(v) > 2:
+                    second_diffs[k] = np.diff(v, n=2)
+                else:
+                    second_diffs[k] = [0]
+
+            elbow_idx = max(second_diffs, key=second_diffs.get)
+
+        logging.info(f"The estimated optimal number of clusters is: {elbow_idx}")
+        
+        return elbow_idx
+    
     def cluster(self):
         self.clustering_method = self.settings.clustering['clustering_method']
         self.max_n_clusters = self.settings.clustering['max_n_clusters']
@@ -192,7 +226,7 @@ class Clustering():
 
         # Determine the optimal K using the clustering loop if K is not specified
         if K == False:
-            logging.info(f"Finding the optimal K...")
+            logging.info(f"Optimizing the {self.optimize_cvi} score...")
             if self.clustering_method == 'kmeans':
                 results_loop, K_loop = self._kmeans_loop()
             elif self.clustering_method == 'gmm':
@@ -213,58 +247,54 @@ class Clustering():
             data_clustered, results_CVIs, model = self._gmm_final(K)
         elif self.clustering_method == 'kmeans':
             data_clustered, results_CVIs, model = self._kmeans_final(K)
-        else:
-            self.clustering_method = 'gmm'
-            data_clustered, results_CVIs, model = self._gmm_final(K)
+        # else:
+        #     self.clustering_method = 'gmm'
+        #     data_clustered, results_CVIs, model = self._gmm_final(K)
             
         results_CVIs.to_csv(f'results/{self.dataset_name}/{self.dataset_name}_CVIs.csv', index=True, header=True)
 
         return K, results_loop, data_clustered, results_CVIs, model
-
+    
     def _kmeans_loop(self) -> Tuple[pd.DataFrame, int]:
         """
         Runs KMeans clustering for a range of K values and returns the K value which maximizes the silhouette score.
         """
-        temp = {i: [] for i in range(2,self.max_n_clusters+1)}  # pre-allocate the dictionary
+        temp = {i: [] for i in range(2, self.max_n_clusters+1)}  # pre-allocate the dictionary
 
         for n in tqdm(range(2, self.max_n_clusters+1), desc='Optimizing the number of clusters'):
-            temp_sil = [None] * self.iterations # pre-allocate the list
+            temp_cvi = [None] * self.iterations  # pre-allocate the list
             for x in range(self.iterations):
-                kmeans = KMeans(n_clusters=n,init='k-means++', random_state=x).fit(self.embedding)
+                kmeans = KMeans(n_clusters=n,init='k-means++', n_init='auto', random_state=x).fit(self.embedding)
                 labels = kmeans.predict(self.embedding)
-                temp_sil[x] = silhouette_score(
-                    self.embedding, labels, metric=self.metric)
-            temp[n] = [int(n),np.mean(temp_sil), np.std(temp_sil)]
+                temp_cvi[x] = calculate_individual_CVI(self.embedding, labels, self.optimize_cvi, self.sil_metric)
+            
+            temp[n] = [int(n), np.mean(temp_cvi), np.std(temp_cvi)]
 
-        results_loop = pd.DataFrame.from_dict(
-            temp, orient='index', columns=['Clusters','Silhouette', 'sil_stdv']).dropna()
-        optimal_n_clusters = estimate_optimal_clusters(temp)
+        results_loop = pd.DataFrame.from_dict(temp, orient='index', columns=['Clusters', f'{self.optimize_cvi}-mean', f'{self.optimize_cvi}-stdv']).dropna()
+        optimal_n_clusters = self.estimate_optimal_clusters(temp, method='max')
         
         return results_loop, int(optimal_n_clusters)
     
     def _gmm_loop(self) -> Tuple[pd.DataFrame, int]:
         """
-        Runs GMM clustering for a range of K values and returns the K value which maximizes the silhouette score.
+        Runs GMM clustering for a range of K values and returns the K value which maximizes the specified CVI metric.
         """
-        temp_CVIs = {i: [] for i in range(2, self.max_n_clusters+1)}  # pre-allocate the dictionary
+        temp = {i: [] for i in range(2, self.max_n_clusters+1)}  # pre-allocate the dictionary
 
         for n in tqdm(range(2, self.max_n_clusters+1), desc='Optimizing the number of clusters'):
-            temp_iter = [None] * self.iterations # pre-allocate the list
+            temp_cvi = [None] * self.iterations  # pre-allocate the list
             for x in range(self.iterations):
-                gmm = GMM(n, n_init=self.gmm_init, init_params=self.gmm_init_params, covariance_type=self.gmm_covariance_type,
-                        warm_start=self.gmm_warm_start, random_state=x, verbose=0).fit(self.embedding)
+                gmm = GMM(n, n_init=self.gmm_init, init_params=self.gmm_init_params,
+                        covariance_type=self.gmm_covariance_type, warm_start=self.gmm_warm_start,
+                        random_state=x, verbose=0).fit(self.embedding)
                 labels = gmm.predict(self.embedding)
-                results_real = calculate_CVIs(self.embedding, self.metric, labels=labels, Random = False)
-                temp_iter[x] = results_real
-            temp_CVIs[n] = temp_iter
-        
-        print(temp_CVIs)                
-        pd.DataFrame(temp_CVIs).to_csv('prueba.csv')
+                temp_cvi[x] = calculate_individual_CVI(self.embedding, labels, self.optimize_cvi, self.sil_metric)
 
-        # results_loop = pd.DataFrame.from_dict(
-        #     temp_CVIs, orient='index', columns=['Clusters','Silhouette', 'sil_stdv']).dropna()
-        # optimal_n_clusters = estimate_optimal_clusters(temp_CVIs, method='max')
-        
+            temp[n] = [int(n), np.mean(temp_cvi), np.std(temp_cvi)]
+
+        results_loop = pd.DataFrame.from_dict(temp, orient='index', columns=['Clusters', f'{self.optimize_cvi}-mean', f'{self.optimize_cvi}-stdv']).dropna()
+        optimal_n_clusters = self.estimate_optimal_clusters(temp, method='max')
+
         return results_loop, int(optimal_n_clusters)
 
     def _gmm_final(self, K: int= 3):
@@ -295,9 +325,8 @@ class Clustering():
             logging.warning('GMM did not converge. Please check you input configuration.')
         
         logging.info('Calculating CVIs')
-        results_real = calculate_CVIs(self.embedding, self.metric,labels=labels, Random = False)
-        results_random = calculate_CVIs(self.embedding, self.metric, labels=None, num_clusters=K, Random = True)
-        
+        results_real = calculate_all_CVIs(self.embedding, self.sil_metric,labels=labels, Random = False)
+        results_random = calculate_all_CVIs(self.embedding, self.sil_metric, labels=None, num_clusters=K, Random = True)
         # concatenate DataFrames along columns axis
         results_CVIs = pd.concat([results_real, results_random], axis=1)
         results_CVIs.to_csv(f'results/{self.dataset_name}/{self.dataset_name}_CVIs.csv', index=True, header=True)
@@ -317,7 +346,7 @@ class Clustering():
             laebls (np.ndarray): Cluster labels
         """
 
-        KMeans_final = KMeans(n_clusters=K, init='k-means++', random_state=self.random_state)
+        KMeans_final = KMeans(n_clusters=K, init='k-means++', n_init='auto', random_state=self.random_state)
         KMeans_final.fit(self.embedding)
         labels = KMeans_final.predict(self.embedding)
 
@@ -327,9 +356,9 @@ class Clustering():
             logging.warning('K-Means did not converge. Please check your input configuration.')
 
         logging.info('Calculating CVIs')
-        results_real = calculate_CVIs(self.embedding, self.metric, labels=labels, Random = False)
-        results_random = calculate_CVIs(self.embedding, self.metric, labels=None, num_clusters=K, Random = True)
         
+        results_real = calculate_all_CVIs(self.embedding, self.sil_metric,labels=labels, Random = False)
+        results_random = calculate_all_CVIs(self.embedding, self.sil_metric, labels=None, num_clusters=K, Random = True)
         # concatenate DataFrames along columns axis
         results_CVIs = pd.concat([results_real, results_random], axis=1)
         results_CVIs.to_csv(f'results/{self.dataset_name}/{self.dataset_name}_CVIs.csv', index=True, header=True)

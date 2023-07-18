@@ -13,7 +13,7 @@ from matplotlib.patches import Ellipse
 
 from sklearn.mixture import GaussianMixture
 
-def plot_GMM(name, embedding, gmm, shadow=True):
+def plot_GMM(dataset_name, embedding, gmm, shadow=True):
     # determine number of clusters
     n_components = len(gmm.means_)
     labels = gmm.predict(embedding)
@@ -50,9 +50,9 @@ def plot_GMM(name, embedding, gmm, shadow=True):
     ax.set_xlabel('Component 1')
     ax.set_ylabel('Component 2')
     
-    plt.savefig(f'results/{name}/scatterplot2D.png')
+    plt.savefig(f'results/{dataset_name}/scatterplot2D.png')
 
-def scatterplot_2D(name: str, model: Any, embedding: np.ndarray) -> None:
+def scatterplot_2D(dataset_name: str, model: Any, embedding: np.ndarray) -> None:
     """
     Create a 2D scatter plot of embeddings with colors corresponding to cluster labels.
 
@@ -106,59 +106,60 @@ def scatterplot_2D(name: str, model: Any, embedding: np.ndarray) -> None:
     plt.xlabel("Component 1", fontsize=15);plt.ylabel("Component 2", fontsize=15)
     plt.autoscale()
     plt.tight_layout()
-    plt.savefig(f'results/{name}/scatterplot2D.png')
+    plt.savefig(f'results/{dataset_name}/scatterplot2D.png')
 
 class Plotting:
-    def __init__(self, name: str):
+    def __init__(self, dataset_name: str):
         """
         Initialize the Plotting object.
 
         Args:
         - name (str): Name of the object.
         """
-        self.name = name
+        self.dataset_name = dataset_name
 
-    def elbow_plot_SIL(self, results_loop: pd.DataFrame, optimal_K: int) -> None:
+    def elbow_plot(self, results_loop: pd.DataFrame, optimal_K: int) -> None:
         """
-        Draw the elbow plot of SIL score vs. K.
+        Draw the elbow plot of CVI vs. K.
 
         Args:
-        - results_loop (pd.DataFrame): A pandas DataFrame with columns 'Clusters', 'Silhouette', and 'sil_stdv'.
+        - results_loop (pd.DataFrame): A pandas DataFrame with columns 'Clusters', 'cvi_mean', and 'cvi_stdv'.
         - optimal_K (int): The optimal number of clusters.
 
         Returns:
         None.
         """
         logging.info('Generating elbow plot')
+        self.optimize_cvi = results_loop.columns[1].split('-')[0]
 
-        optimal_score = results_loop.loc[results_loop['Clusters'] == optimal_K, 'Silhouette'].values[0]
-        optimal_stdv = results_loop.loc[results_loop['Clusters'] == optimal_K, 'sil_stdv'].values[0]
-        optimal_label = f'Optimal K={optimal_K}\nSilhouette={optimal_score:.3f}±{optimal_stdv:.3f}'
+        optimal_score = results_loop.loc[results_loop['Clusters'] == optimal_K, f'{self.optimize_cvi}-mean'].values[0]
+        optimal_stdv = results_loop.loc[results_loop['Clusters'] == optimal_K, f'{self.optimize_cvi}-stdv'].values[0]
+        optimal_label = f'Optimal K={optimal_K}\n{self.optimize_cvi}={optimal_score:.3f}±{optimal_stdv:.3f}'
 
         fig, ax1 = plt.subplots(figsize=(14, 6))
 
-        sil = sns.lineplot(data=results_loop, x='Clusters', y="Silhouette", color='b', errorbar=None, estimator=np.median,
+        sil = sns.lineplot(data=results_loop, x='Clusters', y=f"{self.optimize_cvi}-mean", color='b', errorbar=None, estimator=np.median,
                         ax=ax1)
 
-        sil_error = ax1.errorbar(x=results_loop['Clusters'], y=results_loop['Silhouette'], yerr=results_loop['sil_stdv'],
+        sil_error = ax1.errorbar(x=results_loop['Clusters'], y=results_loop[f'{self.optimize_cvi}-mean'], yerr=results_loop[f'{self.optimize_cvi}-stdv'],
                                 fmt='none', ecolor='b', capsize=4, elinewidth=1.5)
 
         plt.axvline(x=optimal_K, color='r', linestyle='--', label=optimal_label, linewidth=1.5)
 
         plt.legend(fancybox=True, framealpha=0.5, fontsize='15', loc='best', title_fontsize='30')
         plt.tick_params(labelsize=12)
-        plt.title(f"Elbow plot - Sil vs. K", fontsize=20)
+        plt.title(f"Elbow plot - {self.optimize_cvi} vs. K", fontsize=20)
         plt.xlabel("Number of clusters (K)", fontsize=15)
-        plt.ylabel("Silhouette", fontsize=15)
+        plt.ylabel(f"{self.optimize_cvi}", fontsize=15)
         plt.tight_layout()
-        plt.savefig(f'results/{self.name}/{self.name}_Elbowplot.png')
+        plt.savefig(f'results/{self.dataset_name}/{self.dataset_name}_Elbowplot_{self.optimize_cvi}.png')
 
     def distribution_plot(self, model: Any, embedding: np.ndarray) -> None:
         """
-        Plot individual SIL scores each sample, agregated by cluster.
+        Plot individual CVI scores each sample, agregated by cluster.
 
         Args:
-        - model (Any): A clustering model (e.g., KMeans, DBSCAN).
+        - model (Any): A clustering model (e.g., GMM, KMeans).
         - embedding (np.ndarray): A numpy array of shape (n_samples, n_features) containing the data to be clustered.
 
         Returns:
@@ -171,7 +172,8 @@ class Plotting:
         n_clusters = len(set(labels_final))
         sil_bysample = silhouette_samples(embedding, labels_final, metric='euclidean')
         sil_svg = round(float(silhouette_score(embedding, labels_final, metric='euclidean')),3)
-        
+        # TODO change metric
+
         y_lower = 10
         y_tick_pos_ = []
 
@@ -221,13 +223,13 @@ class Plotting:
         ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
         # ax.legend(loc="best")
         plt.tight_layout()
-        plt.savefig(f'results/{self.name}/SIL_bycluster.png')
+        plt.savefig(f'results/{self.dataset_name}/SIL_bycluster.png')
 
         # Only if 2 dimensions, plot 2D scatterplot
         # Currently ONLY work for euclidean spaces
         if (embedding.shape[1] == 2):
             logging.info('Generating 2D scatterplot plot')
-            scatterplot_2D(self.name, model, embedding)
+            scatterplot_2D(self.dataset_name, model, embedding)
 
         # CODE TO GET CONTOUR PLOTS in GMM - NOT USED
         # Get the means and covariances of the GMM model

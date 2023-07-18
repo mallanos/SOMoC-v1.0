@@ -2,15 +2,14 @@
     "random_state": 10,
     "standardize_molec": true,
     "optimal_K": false,
-    "optimize_metric": "all",
     "encoding": {
         "fingerprint_type": "estate",
         "radius": 2,
         "nbits": 2048
     },
     "reducing": {
-        "reducer":"umap",
-        "n_components": 3,
+        "reducer":"pca",
+        "n_components": 2,
         "n_neighbors": 10,
         "min_dist": 0.0,
         "metric": "jaccard",
@@ -18,18 +17,13 @@
         "densemap": false
     },
     "clustering": {
+        "optimize_cvi": "silhouette",
         "clustering_method":"gmm",
-        "max_n_clusters": 20,
+        "max_n_clusters": 10,
         "iterations": 3,
         "gmm_init": 5,
         "gmm_init_params": "k-means++",
         "gmm_covariance_type": "full",
         "gmm_warm_start": false
-    },
-    "CVIs": {
-        "calinski_harabasz": 5450.319,
-        "davies_bouldin": 0.310,
-        "dunn": 0.888,
-        "silhouette": 0.939
     }
 }

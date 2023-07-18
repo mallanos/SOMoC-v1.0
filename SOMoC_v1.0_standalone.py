@@ -18,6 +18,13 @@ from modules.reducing import *
 
 ####################################### SOMoC main ########################################
 ###########################################################################################
+#TODO
+# Support SDF molecules as input
+# Support for multiple CVIs to be optimized
+# Allow scaffold decomposition before Clustering
+# Get representative from cluster. Scaffold or MCC
+# Save clustering model to be used later
+
 def main():
 
     parser = argparse.ArgumentParser(prog='SOMoC', description='SOMoC is a clustering methodology based on the combination of molecular fingerprinting, dimensionality reduction by the Uniform Manifold Approximation and Projection (UMAP) algorithm and clustering with the Gaussian Mixture Model (GMM) algorithm.')
@@ -68,7 +75,7 @@ def main():
     plotter = Plotting(dataset_name)
 
     # Generate Elbow plot
-    if results_loop is not None: plotter.elbow_plot_SIL(results_loop, K)
+    if results_loop is not None: plotter.elbow_plot(results_loop, K)
 
     # Generate the distribution plot   
     plotter.distribution_plot(clustering_model, embedding)

@@ -72,7 +72,6 @@ class Settings:
             "random_state": 10,
             "standardize_molec": False,
             "optimal_K": False,
-            "optimize_metric": "all",
             "encoding": {
                 "fingerprint_type": "estate",
                 "radius": 2,
@@ -88,6 +87,7 @@ class Settings:
                 "densemap": False
             },
             "clustering": {
+                "optimize_cvi": "silhouette",
                 "clustering_method":"gmm",
                 "max_n_clusters": 10,
                 "iterations": 10,
