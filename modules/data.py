@@ -17,6 +17,7 @@ from typing import Tuple
 
 from rdkit import Chem
 from molvs import Standardizer
+from rdkit.Chem.Scaffolds import MurckoScaffold
 
 CONFIG_PARSE_MODE = rapidjson.PM_COMMENTS | rapidjson.PM_TRAILING_COMMAS
 
@@ -73,6 +74,7 @@ class Settings:
             "standardize_molec": False,
             "optimal_K": False,
             "encoding": {
+                "get_scaffolds": False,
                 "fingerprint_type": "estate",
                 "radius": 2,
                 "nbits": 2048
@@ -141,6 +143,7 @@ class LoadData:
     def __init__(self, _file: str) -> None:
         test_file="test/focal_adhesion.csv"
         self.file_path = _file or test_file
+        self.dataset_name = get_file_name(self.file_path)
 
     def parse_smiles_csv(self) -> Tuple[pd.DataFrame, str]:
         """Get data from a CSV file"""
@@ -152,13 +155,13 @@ class LoadData:
         with file_path.open() as f:
             data = pd.read_csv(f, delimiter=',', header='infer')
 
-        dataset_name = get_file_name(file_path)
-        logging.info(f'Loading {dataset_name} dataset')
+        logging.info(f'Loading {self.dataset_name} dataset')
         logging.info(f'{len(data)} Smiles loaded..')
 
-        return data, dataset_name
+        return data, self.dataset_name
+    
 
-    def smiles_to_mol(self, data: pd.DataFrame, standardize: bool=False) -> pd.DataFrame:
+    def smiles_to_mol(self, data: pd.DataFrame, standardize: bool=False, get_scaffolds: bool=True) -> pd.DataFrame:
         """Standardize molecules using the MolVS package https://molvs.readthedocs.io/en/latest/.
 
         Parameters
@@ -196,7 +199,11 @@ class LoadData:
             except Exception as e:
                 logging.warning(f"Failed to process molecule {i+1}: ({e})")
 
-        df['mol'] = output_smiles
+        if get_scaffolds:
+            df['mol'] = self.mol_to_murko_scaffolds(output_smiles)
+        else:
+            df['mol'] = output_smiles
+        
         df.dropna(inplace=True) # Drop failed molecules
 
         num_processed_mols = len(output_smiles)
@@ -208,3 +215,17 @@ class LoadData:
             logging.warning(f"{num_failed_mols} molecules failed to be standardized")
 
         return df
+    
+    def mol_to_murko_scaffolds(self, mol_list:list):
+        logging.info('Obtaining scaffolds from molecules..')
+        scaffolds_list = [np.nan] * len(mol_list)
+        for i, mol in enumerate(mol_list):
+            try:
+                scaffold = MurckoScaffold.GetScaffoldForMol(mol)
+            except:
+                logging.warning(f"Murko scaffold could not be obtained for molecule {i}, keeping original molecule instead.")
+                scaffold=mol
+            scaffolds_list[i] = scaffold
+
+        return scaffolds_list
+   

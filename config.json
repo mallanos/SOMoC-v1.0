@@ -3,16 +3,17 @@
     "standardize_molec": true,
     "optimal_K": false,
     "encoding": {
-        "fingerprint_type": "estate",
+        "get_scaffolds": false,
+        "fingerprint_type": "morgan",
         "radius": 2,
         "nbits": 2048
     },
     "reducing": {
-        "reducer":"pca",
-        "n_components": 2,
-        "n_neighbors": 10,
+        "reducer":"umap",
+        "n_components": 5,
+        "n_neighbors": 12,
         "min_dist": 0.0,
-        "metric": "jaccard",
+        "metric": "euclidean",
         "init": "spectral",
         "densemap": false
     },
