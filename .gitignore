@@ -2,4 +2,5 @@ results
 SOMoC.log
 .vscode/settings.json
 *.pyc
+*.ipynb
 SOMoC-v1.0.py

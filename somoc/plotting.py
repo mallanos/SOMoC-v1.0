@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import logging
 from sklearn.metrics import silhouette_score, silhouette_samples
+from sklearn.mixture import GaussianMixture
 import seaborn as sns
 from scipy.stats import multivariate_normal
 import matplotlib.cm as cm
@@ -11,7 +12,10 @@ import matplotlib.ticker as ticker
 from matplotlib.colors import ListedColormap
 from matplotlib.patches import Ellipse
 
-from sklearn.mixture import GaussianMixture
+from rdkit.Chem import MolFromSmiles, rdFMCS
+from rdkit import Chem
+from rdkit.Chem.Scaffolds import MurckoScaffold
+from rdkit.Chem.Draw import MolsToGridImage
 
 def plot_GMM(dataset_name, embedding, gmm, shadow=True):
     # determine number of clusters
@@ -230,6 +234,21 @@ class Plotting:
         if (embedding.shape[1] == 2):
             logging.info('Generating 2D scatterplot plot')
             scatterplot_2D(self.dataset_name, model, embedding)
+
+    def plot_cluster_mcs(self, data: pd.DataFrame):
+        logging.info('Generating MCS plot')
+        groups = data.groupby('cluster')['smiles']
+        MCSs = {}
+        for c, mols in groups:
+            mols = [MolFromSmiles(m) for m in mols.values]
+            mols = [MurckoScaffold.GetScaffoldForMol(m) for m in mols] 
+            mcs = rdFMCS.FindMCS(mols,timeout=100,threshold=0.8, atomCompare=rdFMCS.AtomCompare.CompareAny,
+                                bondCompare=rdFMCS.BondCompare.CompareAny, matchValences=True, ringMatchesRingOnly=True, completeRingsOnly=True)
+            MCSs[c] = mcs
+        MCSs_mols = [Chem.MolFromSmarts(mcs.smartsString) for mcs in MCSs.values()]
+        legends = [f'Cluster {x}' for x in list(MCSs.keys())]
+        img = MolsToGridImage(MCSs_mols, legends=legends)
+        img.save(f'results/{self.dataset_name}/MCS_byCluster.png')
 
         # CODE TO GET CONTOUR PLOTS in GMM - NOT USED
         # Get the means and covariances of the GMM model

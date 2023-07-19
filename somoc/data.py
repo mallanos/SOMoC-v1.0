@@ -48,7 +48,7 @@ def merge_data(dataset_name: str, data: pd.DataFrame, labels: np.ndarray) -> Non
 
     df.to_csv(f'results/{dataset_name}/{dataset_name}_Clustered.csv', index=True, header=True)
     
-    return None
+    return df
 
 class Settings:
     def __init__(self, config_file: str) -> None:
@@ -73,6 +73,7 @@ class Settings:
             "random_state": 10,
             "standardize_molec": False,
             "optimal_K": False,
+            "MCS_plot": False,
             "encoding": {
                 "get_scaffolds": False,
                 "fingerprint_type": "estate",

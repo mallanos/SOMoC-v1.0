@@ -40,8 +40,8 @@ def main():
     handlers=[
         logging.FileHandler(f"SOMoC.log", mode='w'),
         logging.StreamHandler()
-    ]
-)
+    ])
+    
     start_time = time.monotonic()
     
     # Load settings from JSON file
@@ -70,7 +70,7 @@ def main():
     clusterer = Clustering(data.dataset_name, embedding, settings)
     K, results_loop, labels, results_CVIs, clustering_model = clusterer.cluster()
     
-    merge_data(data.dataset_name, data_mols, labels)
+    data_clustered = merge_data(data.dataset_name, data_mols, labels)
     
     plotter = Plotting(dataset_name)
 
@@ -79,6 +79,9 @@ def main():
 
     # Generate the distribution plot   
     plotter.distribution_plot(clustering_model, embedding)
+    
+    # Generate MCS per cluster
+    plotter.plot_cluster_mcs(data_clustered)
 
     # Write the settings JSON file
     settings.save_settings(data.dataset_name, df=results_CVIs)
