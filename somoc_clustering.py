@@ -10,11 +10,11 @@ import time
 import logging
 import argparse
 
-from modules.data import *
-from modules.plotting import *
-from modules.clustering import *
-from modules.encoding import *
-from modules.reducing import *
+from somoc.data import *
+from somoc.plotting import *
+from somoc.clustering import *
+from somoc.encoding import *
+from somoc.reducing import *
 
 ####################################### SOMoC main ########################################
 ###########################################################################################
